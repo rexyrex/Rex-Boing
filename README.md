@@ -25,7 +25,7 @@ the rows whose counters do not exist there are hidden rather than faked.
 release build is signed with a Developer ID and notarized, so Gatekeeper lets
 it through without any workaround.
 
-**Or build it yourself.** Two commands, given Xcode and Homebrew:
+**Or build it yourself.** Two commands, given Xcode 26 or newer and Homebrew:
 
 ```bash
 brew install xcodegen
@@ -355,7 +355,8 @@ swiftc -O -o /tmp/ink-check Tools/ink-check.swift \
 
 ## Building
 
-Requires Xcode 16 or newer and [XcodeGen](https://github.com/yonaskolb/XcodeGen)
+Requires Xcode 26 or newer (the code uses Swift 6.2 features such as isolated
+`deinit`, which older toolchains reject) and [XcodeGen](https://github.com/yonaskolb/XcodeGen)
 (`brew install xcodegen`). The Xcode project is generated from `project.yml`
 and is not checked in, so the first step after cloning is always:
 

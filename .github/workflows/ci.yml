@@ -8,7 +8,9 @@ on:
 jobs:
   build:
     name: Build and check
-    runs-on: macos-15
+    # Xcode 26 (Swift 6.2) is the floor: the code uses isolated deinit, which
+    # older toolchains reject. macos-26 ships Xcode 26.6 as its default.
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
 
