@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  Rex Boing is intentionally NOT sandboxed.
+
+	  Reading system telemetry requires access that the App Sandbox denies:
+	    * host_processor_info / host_statistics64  (Mach host ports)
+	    * libproc listing + rusage for every process on the system
+	    * the IORegistry (GPU utilisation, per-process GPU time, SMC, HID sensors)
+
+	  The app makes no network connections and writes nothing outside its own
+	  preferences domain.
+	-->
+	<key>com.apple.security.app-sandbox</key>
+	<false/>
+</dict>
+</plist>

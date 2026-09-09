@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    name: Build and check
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Build Release
+        run: ./build.sh
+
+      # Only the checks that do not read live hardware: the runner has no SMC,
+      # IOReport or GPU counters to sample, and those checks are host smoke
+      # tests by design (see Tools/check.sh).
+      - name: Headless checks
+        run: Tools/check.sh --pure
+
+      - name: Upload app
+        uses: actions/upload-artifact@v4
+        with:
+          name: Rex-Boing-unsigned
+          path: dist/Rex Boing.app
+          if-no-files-found: error
