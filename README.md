@@ -21,8 +21,8 @@ Requires macOS 14 Sonoma or later. Apple silicon gets every reading; on Intel
 the rows whose counters do not exist there are hidden rather than faked.
 
 **Download.** Notarized builds are published on the
-[Releases](https://github.com/rexyrex/Rex-Boing/releases) page. Unzip
-`Rex Boing.zip`, drag `Rex Boing.app` into `/Applications`, and open it. The
+[Releases](https://github.com/rexyrex/Rex-Boing/releases) page. Unzip the
+zip, drag `Rex Boing.app` into `/Applications`, and open it. The
 release build is signed with a Developer ID and notarized, so Gatekeeper lets
 it through without any workaround.
 
