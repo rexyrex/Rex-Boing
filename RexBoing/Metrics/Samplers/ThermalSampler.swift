@@ -24,7 +24,32 @@ final class ThermalSampler {
     /// Discovered once — enumerating the SMC key index costs ~400ms.
     private var temperatureKeys: [String] = []
     private var essentialKeys: [String] = []
+    /// Every CPU and GPU sensor plus the battery: what a calibration pass
+    /// reads. See `headlineOffsets`.
+    private var headlineKeys: [String] = []
+    /// `essentialKeys` as a set, for the aggregate pass that runs every tick.
+    private var essentialKeySet: Set<String> = []
     private var didDiscover = false
+
+    /// How far the whole CPU and GPU sensor sets sit from the essential
+    /// subsets that stand in for them between full reads.
+    ///
+    /// The subset is an evenly spread handful, and it does not average to the
+    /// same number as all of them: on an M1 Pro the six CPU probes it keeps
+    /// out of thirty-three read consistently low, by 0.1 to 1 °C depending
+    /// on which cluster was busy. With the dashboard open the two alternated
+    /// — the full set every five seconds, the subset in between — so the
+    /// headline temperature ticked down a degree between full reads and its
+    /// graph grew a sawtooth. Every pass that reads a whole category
+    /// measures this offset from the same instant's readings, and a
+    /// subset-only pass reports the subset's fresh mean corrected by it: the
+    /// subset for *when*, the full set for *where*.
+    private var headlineOffsets = (cpu: Double?.none, gpu: Double?.none)
+    private var lastCalibrationUptime: TimeInterval?
+    /// How often the headline sets are read whole while the dashboard is
+    /// closed. About forty SMC reads — a few milliseconds every half minute
+    /// — keeps the offset from describing how the die was loaded an hour ago.
+    private let calibrationInterval: TimeInterval = 30
 
     /// The full sensor set, values updated in place as readings come in.
     private var cachedSensors: [TempSensor] = []
@@ -63,8 +88,9 @@ final class ThermalSampler {
 
     /// How many CPU sensors the headline average samples when the dashboard is
     /// closed. An M1 Pro exposes 33 of them and they track each other within a
-    /// couple of degrees, so averaging a spread of six gives the same number
-    /// for a fifth of the IOKit traffic.
+    /// couple of degrees, so a spread of six follows the same curve for a
+    /// fifth of the IOKit traffic — offset by a steady fraction of a degree,
+    /// which `headlineOffsets` takes back out.
     private static let essentialCPUSensorLimit = 6
 
     /// The engine calls this after sleep or a clock discontinuity so the next
@@ -73,6 +99,7 @@ final class ThermalSampler {
     func invalidateCadence() {
         lastFullRefreshUptime = nil
         lastEssentialRefreshUptime = nil
+        lastCalibrationUptime = nil
     }
 
     func sample(detailed: Bool) -> ThermalMetrics {
@@ -88,6 +115,12 @@ final class ThermalSampler {
             cachedFans = smc?.fans() ?? []
             lastFullRefreshUptime = uptime
             lastEssentialRefreshUptime = uptime
+            lastCalibrationUptime = uptime
+        } else if !headlineKeys.isEmpty,
+                  Cadence.isDue(lastCalibrationUptime, every: calibrationInterval, at: uptime) {
+            apply(readSensors(keys: headlineKeys), complete: false)
+            lastEssentialRefreshUptime = uptime
+            lastCalibrationUptime = uptime
         } else if Cadence.isDue(
             lastEssentialRefreshUptime, every: essentialRefreshInterval, at: uptime) {
             apply(readSensors(keys: essentialKeys), complete: false)
@@ -221,9 +254,11 @@ final class ThermalSampler {
         }
 
         let cpuKeys = keys(.cpu)
+        let gpuKeys = keys(.gpu)
         essentialKeys = Self.spread(cpuKeys, limit: Self.essentialCPUSensorLimit)
-            + Self.spread(keys(.gpu), limit: 4)
+            + Self.spread(gpuKeys, limit: 4)
             + keys(.battery)
+        headlineKeys = cpuKeys + gpuKeys + keys(.battery)
         // On a Mac whose key space carries no `Tp`/`Te` sensors, everything
         // lands in SoC and that is what the CPU readout falls back to — but the
         // bucket is a catch-all and can run to a hundred keys, so it is sampled
@@ -231,6 +266,7 @@ final class ThermalSampler {
         if cpuKeys.isEmpty {
             essentialKeys += Self.spread(keys(.soc), limit: Self.essentialCPUSensorLimit)
         }
+        essentialKeySet = Set(essentialKeys)
 
         // Discovery already read every candidate in order to validate it, so
         // reuse that pass. Re-reading the same ~190 keys here added another
@@ -245,6 +281,7 @@ final class ThermalSampler {
         let uptime = ProcessInfo.processInfo.systemUptime
         lastFullRefreshUptime = uptime
         lastEssentialRefreshUptime = uptime
+        lastCalibrationUptime = uptime
     }
 
     /// An evenly spaced subset, so a sampled cluster still covers its whole
@@ -352,28 +389,62 @@ final class ThermalSampler {
 
     // MARK: - Aggregates
 
+    /// One category's fresh readings, whole and within the essential subset,
+    /// against how many sensors the category has in all.
+    private struct CategoryMean {
+        var sum = 0.0, count = 0
+        var subsetSum = 0.0, subsetCount = 0
+        var total = 0
+
+        mutating func add(_ celsius: Double, inSubset: Bool) {
+            sum += celsius
+            count += 1
+            if inSubset {
+                subsetSum += celsius
+                subsetCount += 1
+            }
+        }
+
+        /// The category's mean temperature, calibrated where only part of it
+        /// was read. A pass that read every sensor gives the exact mean and
+        /// re-measures the subset's offset from it; any other pass gives the
+        /// mean of what it read, shifted by that offset.
+        func headline(offset: inout Double?) -> Double? {
+            guard count > 0 else { return nil }
+            let mean = sum / Double(count)
+            guard count < total else {
+                if subsetCount > 0 { offset = mean - subsetSum / Double(subsetCount) }
+                return mean
+            }
+            return mean + (offset ?? 0)
+        }
+    }
+
     /// Computes all headline figures in one pass and without temporary arrays.
     /// This runs on every engine tick even though sensor I/O runs less often.
     private func freshAggregates() -> (
         cpu: Double?, gpu: Double?, soc: Double?, battery: Double?,
         storage: Double?, peak: Double?
     ) {
-        var cpuSum = 0.0, cpuCount = 0
-        var gpuSum = 0.0, gpuCount = 0
+        var cpu = CategoryMean(), gpu = CategoryMean()
         var batterySum = 0.0, batteryCount = 0
         var soc: Double?
         var storage: Double?
         var peak: Double?
 
-        for sensor in cachedSensors where freshKeys.contains(sensor.key) {
+        for sensor in cachedSensors {
+            switch sensor.category {
+            case .cpu: cpu.total += 1
+            case .gpu: gpu.total += 1
+            default: break
+            }
+            guard freshKeys.contains(sensor.key) else { continue }
             peak = max(peak ?? sensor.celsius, sensor.celsius)
             switch sensor.category {
             case .cpu:
-                cpuSum += sensor.celsius
-                cpuCount += 1
+                cpu.add(sensor.celsius, inSubset: essentialKeySet.contains(sensor.key))
             case .gpu:
-                gpuSum += sensor.celsius
-                gpuCount += 1
+                gpu.add(sensor.celsius, inSubset: essentialKeySet.contains(sensor.key))
             case .battery:
                 batterySum += sensor.celsius
                 batteryCount += 1
@@ -387,8 +458,8 @@ final class ThermalSampler {
         }
 
         return (
-            cpuCount > 0 ? cpuSum / Double(cpuCount) : nil,
-            gpuCount > 0 ? gpuSum / Double(gpuCount) : nil,
+            cpu.headline(offset: &headlineOffsets.cpu),
+            gpu.headline(offset: &headlineOffsets.gpu),
             soc,
             batteryCount > 0 ? batterySum / Double(batteryCount) : nil,
             storage,

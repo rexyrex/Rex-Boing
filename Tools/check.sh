@@ -14,6 +14,8 @@
 #   readout  every menu bar caption fits the column it was measured for
 #   clock    history buffers, process history and the usage ledger against a
 #            synthetic timeline
+#   power    the energy meter against synthetic publication timelines:
+#            every-read, batched, frozen, stale, reset and rebaselined counters
 #   ledger   the usage ledger's accounting, then one live pass through the
 #            real process sampler, then micro-benchmarks
 #   metrics  every sampler against this machine: availability, finiteness,
@@ -23,7 +25,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-PURE=(visual ink readout clock)
+PURE=(visual ink readout clock power)
 LIVE=(ledger metrics engine)
 
 if [ $# -eq 0 ]; then
@@ -31,7 +33,7 @@ if [ $# -eq 0 ]; then
 elif [ "$1" = "--pure" ]; then
     CHECKS=("${PURE[@]}")
 elif [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
-    sed -n '2,22p' "$0"
+    sed -n '2,24p' "$0"
     exit 0
 else
     CHECKS=("$@")
@@ -59,6 +61,9 @@ sources_for() {
             echo RexBoing/Metrics/Snapshot.swift RexBoing/Metrics/Format.swift \
                  RexBoing/Metrics/History.swift RexBoing/Metrics/ProcessHistory.swift \
                  RexBoing/Metrics/UsageLedger.swift ;;
+        power)
+            echo RexBoing/Metrics/Snapshot.swift RexBoing/Metrics/Format.swift \
+                 RexBoing/Metrics/Samplers/IOReportSampler.swift ;;
         ledger)
             echo RexBoing/Metrics/Snapshot.swift RexBoing/Metrics/Format.swift \
                  RexBoing/Metrics/UsageLedger.swift \

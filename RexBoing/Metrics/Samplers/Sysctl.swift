@@ -156,13 +156,19 @@ enum HostInfo {
 /// should pass it: a 2 s cadence on a 1 s refresh ran at 2 s or 3 s at
 /// random, the process table refreshed on alternate ticks while the dashboard
 /// was open, and at the 5 s refresh setting the background process cadence
-/// flipped between 5 s and 10 s. The slack absorbs that jitter. It is far
-/// smaller than any tick spacing the engine allows, so nothing can fire a
+/// flipped between 5 s and 10 s. The slack absorbs that jitter. It is
+/// smaller than any tick spacing the preferences allow, so nothing can fire a
 /// whole tick early.
 enum Cadence {
-    /// Comfortably above the few milliseconds GCD actually drifts, and well
-    /// under the quarter-second minimum tick spacing.
-    static let slack: TimeInterval = 0.1
+    /// The jitter is bounded by the timer's leeway, not by how precisely GCD
+    /// usually fires: every tick may land anywhere up to the leeway late, so
+    /// two consecutive ticks can be a whole leeway closer together than
+    /// nominal. `MetricsEngine.restart` grants up to 250 ms at the slower
+    /// refresh settings — 200 ms at two seconds — and the tenth of a second
+    /// this used to be let the two-second thermal and power jobs slip to four
+    /// seconds whenever the system spent its leeway. Above the largest
+    /// leeway, below the shortest refresh interval (half a second).
+    static let slack: TimeInterval = 0.3
 
     /// Whether a job last run at `last` (uptime; `nil` for never) is due
     /// again at `now`, given it should run every `period` seconds.

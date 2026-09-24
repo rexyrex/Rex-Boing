@@ -80,10 +80,44 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
 
     private var readoutIdentity: ReadoutIdentity?
 
-    /// Time constant for easing towards a new load sample, in seconds. Long
-    /// enough to absorb a one-second sampling interval, short enough that a
-    /// burst of work still shows up as soon as you look.
-    private static let loadResponse = 0.55
+    /// The preferences the per-frame path reads, copied out of `Preferences`.
+    ///
+    /// Reading an `@Published` property is not a field load: it goes through
+    /// Combine's enclosing-instance subscript, which does a dynamic cast and a
+    /// protocol-conformance lookup on every access. The display link read
+    /// four of them per frame, twice over, and a profile of a live instance
+    /// put that at half the cost of `step` — more than advancing the clock,
+    /// easing the load and retuning the link together. Refreshed in
+    /// `refresh`, which every preference change already goes through.
+    private struct FrameSettings {
+        var animation: AnimationQuality
+        var showVisualizer: Bool
+        var visualizer: Visualizer
+        var monochrome: Bool
+        var refreshInterval: TimeInterval
+
+        @MainActor init(_ preferences: Preferences) {
+            animation = preferences.animation
+            showVisualizer = preferences.showVisualizer
+            visualizer = preferences.visualizer
+            monochrome = preferences.monochromeMenuBar
+            refreshInterval = preferences.refreshInterval
+        }
+    }
+
+    private var settings: FrameSettings
+
+    /// Time constant for easing towards a new load sample, in seconds.
+    ///
+    /// Scaled to the sampling interval. A fixed half second absorbed a
+    /// one-second cadence, but at two or five seconds the ease finished long
+    /// before the next sample arrived, so the pace and the colour ramp moved
+    /// in visible steps — a quick lurch, then a plateau — at exactly the
+    /// settings chosen for a calmer menu bar. Just under half the interval
+    /// keeps the glide going until the next sample takes over, and never
+    /// drops below the half second that keeps a burst of work visible as
+    /// soon as you look.
+    private var loadResponse: Double { max(0.55, 0.45 * settings.refreshInterval) }
 
     private let canvas = VisualCanvas()
     private var layout = StatusBarRenderer.Layout(size: .zero, visual: .zero, textOrigin: 0)
@@ -116,6 +150,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
 
     init(engine: MetricsEngine) {
         self.engine = engine
+        self.settings = FrameSettings(Preferences.shared)
         Self.seedPreferredPositionIfNeeded()
         self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         super.init()
@@ -439,13 +474,14 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     /// ceiling — which is what makes a resting visualiser look unhurried rather
     /// than broken.
     private var animationRate: (fps: Double, pace: Double) {
-        let ceiling = preferences.animation.maximumFrameRate
+        let animation = settings.animation
+        let ceiling = animation.maximumFrameRate
         guard ceiling > 0 else { return (0, 0) }
 
-        let desired = preferences.visualizer.rate(
-            forLoad: smoothedLoad, speedFactor: preferences.animation.paceFactor)
+        let desired = settings.visualizer.rate(
+            forLoad: smoothedLoad, speedFactor: animation.paceFactor)
         let floor = max(6, ceiling / 3)
-        let fps = min(ceiling, max(floor, desired * preferences.animation.framesPerCycle))
+        let fps = min(ceiling, max(floor, desired * animation.framesPerCycle))
         // The pace is held to the *minimum* frames a cycle needs, not to the
         // setting's target. A higher setting should buy smoothness, not cost
         // the visualiser its top speed.
@@ -468,7 +504,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             // Exponential easing towards the last sample, framed in seconds so
             // the response is the same whatever rate the link is running at.
             smoothedLoad += (currentLoad - smoothedLoad)
-                * (1 - exp(-delta / Self.loadResponse))
+                * (1 - exp(-delta / loadResponse))
             // Clamped against the rate the link is actually tuned to, not the
             // ideal one: retune has a 20% hysteresis band, and a pace derived
             // from the fresh ideal while the link still runs the older, lower
@@ -493,8 +529,8 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     }
 
     private var shouldAnimate: Bool {
-        guard preferences.animation.isAnimated,
-              preferences.showVisualizer,
+        guard settings.animation.isAnimated,
+              settings.showVisualizer,
               !isPaused,
               sessionIsActive,
               statusItemIsVisible
@@ -507,6 +543,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     // MARK: - Rendering
 
     private func refresh(_ snapshot: Snapshot, force: Bool = false) {
+        settings = FrameSettings(preferences)
         // The easing loop is the only thing that advances `smoothedLoad`, and
         // it is not running when animation is off, Reduce Motion is on, or the
         // item is paused — modes that still draw a still pose whose amplitude
@@ -603,7 +640,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     /// Puts the visualiser's layer where the layout says it goes. The drawing
     /// itself happens in `present`, on every frame.
     private func configureVisualLayer() {
-        guard preferences.showVisualizer else {
+        guard settings.showVisualizer else {
             visualLayer?.isHidden = true
             return
         }
@@ -627,8 +664,8 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     /// dirty is a plain CoreAnimation update with none of that around it. The
     /// button's own image is left empty so there is nothing drawn over the top.
     private func present() {
-        guard preferences.showVisualizer, let layer = visualLayer else { return }
-        canvas.visual = preferences.visualizer
+        guard settings.showVisualizer, let layer = visualLayer else { return }
+        canvas.visual = settings.visualizer
         // A still frame is a moment, not the start of a cycle.
         canvas.time = shouldAnimate ? clock : Visualizer.restingTime
         canvas.load = smoothedLoad
@@ -642,7 +679,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     /// want the menu bar to look like the menu bar, and a colour ramp is
     /// precisely what it is opting out of.
     private var currentInk: NSColor {
-        guard !preferences.monochromeMenuBar else { return neutralInk }
+        guard !settings.monochrome else { return neutralInk }
 
         // Two hundred steps across the ramp: finer than the eye resolves in a
         // thirty-point field, coarse enough that a machine sitting at a steady

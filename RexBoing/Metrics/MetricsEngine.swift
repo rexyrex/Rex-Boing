@@ -146,6 +146,9 @@ private final class SamplerCore: @unchecked Sendable {
             lastBatterySampleUptime = nil
             lastPowerSampleUptime = nil
             lastSleepSampleUptime = nil
+            // Energy is metered between publications, not ticks, so the
+            // meters carry a baseline of their own that the gap has broken.
+            power?.rebaseline()
             thermal.invalidateCadence()
             network.invalidateCachedPrimary()
             disk.invalidateCachedCapacity()

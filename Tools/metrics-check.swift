@@ -163,8 +163,12 @@ enum MetricsCheck {
         print("GPU \(gpuReading.available ? Format.percent(gpuReading.utilization) : "unavailable")")
         print("Thermals \(thermalReading.sensors.count) sensors · "
             + "\(thermalReading.fans.count) fans")
-        print("Package power "
-            + (powerReading.power.packageWatts.map(Format.watts) ?? "unavailable"))
+        // Blocks whose counters have not published inside the window read
+        // "not publishing" — on macOS 27 that can be every mJ channel.
+        func watts(_ value: Double?) -> String { value.map(Format.watts) ?? "not publishing" }
+        print("Package power \(watts(powerReading.power.packageWatts)) · "
+            + "CPU \(watts(powerReading.power.cpuWatts)) · "
+            + "GPU \(watts(powerReading.power.gpuWatts))")
         print("System power "
             + (systemPowerReading.systemTotalWatts.map(Format.watts) ?? "unavailable")
             + (systemPowerReading.dcInWatts.map { " · DC in " + Format.watts($0) } ?? ""))

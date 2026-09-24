@@ -45,16 +45,30 @@ final class IOReportSampler {
 
     private let subscription: CFTypeRef
     private let subscribedChannels: CFMutableDictionary
+    /// Baseline for the DVFS residency deltas. Energy keeps its own running
+    /// totals in the meters below, because its window is not the sampling
+    /// window — see `EnergyMeter`.
     private var previousSample: CFDictionary?
-    /// When `previousSample` was taken, on the uptime clock.
-    ///
-    /// The energy deltas span the window since the baseline was *taken*, which
-    /// is not necessarily the window the caller tracks: if a read ever fails,
-    /// the old baseline stays in place, and dividing its two-interval delta by
-    /// the caller's one interval would double every wattage. The sampler
-    /// therefore clocks its own baseline — on uptime rather than wall time,
-    /// because the counters only accrue while the machine is awake.
-    private var previousSampleTime: TimeInterval?
+
+    /// One meter per SoC block. Each turns the block's cumulative counter
+    /// into watts over the span between two *publications* of it, which is
+    /// the only span the energy is actually known over.
+    private var cpuMeter = EnergyMeter()
+    private var gpuMeter = EnergyMeter()
+    private var aneMeter = EnergyMeter()
+    private var dramMeter = EnergyMeter()
+    /// Set by the engine across a sleep or clock step: the next pass only
+    /// re-primes every meter, publishing nothing that spans the gap.
+    private var needsRebaseline = false
+
+    /// Mach absolute time to seconds, for the drivers' publication stamps.
+    private static let secondsPerMachTick: Double = {
+        var timebase = mach_timebase_info_data_t()
+        guard mach_timebase_info(&timebase) == KERN_SUCCESS, timebase.denom > 0 else {
+            return 1e-9
+        }
+        return Double(timebase.numer) / Double(timebase.denom) / 1e9
+    }()
 
     /// DVFS frequency tables, in MHz, indexed by performance state.
     private let efficiencyStates: [Double]
@@ -105,6 +119,9 @@ final class IOReportSampler {
             guard let channels = copyChannels(
                 group as CFString, subgroup as CFString?, 0, 0, 0)?.takeRetainedValue()
             else { continue }
+            if group == "Energy Model" {
+                Self.pruneEnergyChannels(channels, name: channelName)
+            }
             if let existing = merged {
                 mergeChannels(existing, channels, nil)
             } else {
@@ -140,14 +157,21 @@ final class IOReportSampler {
         self.performanceStates = Self.frequencyTable(key: "voltage-states5-sram")
         self.gpuStates = Self.frequencyTable(key: "voltage-states9")
 
-        // Prime the delta baseline so the first real sample is meaningful.
-        previousSample = createSamples(subscription, subscribedChannels, nil)?.takeRetainedValue()
-        if previousSample != nil {
-            previousSampleTime = ProcessInfo.processInfo.systemUptime
+        // Prime both baselines so the first real sample is meaningful.
+        if let first = createSamples(subscription, subscribedChannels, nil)?.takeRetainedValue() {
+            previousSample = first
+            observeEnergy(in: first)
         }
     }
 
     // MARK: - Sampling
+
+    /// Called across a sleep or a clock step. Energy is metered between
+    /// publications rather than between samples, so a meter left alone would
+    /// happily divide joules that straddle the gap by a span that includes it.
+    func rebaseline() {
+        needsRebaseline = true
+    }
 
     func sample(interval: TimeInterval) -> Reading {
         var reading = Reading()
@@ -157,22 +181,27 @@ final class IOReportSampler {
                 .takeRetainedValue()
         else { return reading }
 
-        // The true span of the delta below. The caller's interval is only the
-        // fallback for a baseline whose age nothing recorded.
-        let now = ProcessInfo.processInfo.systemUptime
-        let elapsed = previousSampleTime.map { now - $0 } ?? interval
+        let previous = previousSample
+        previousSample = current
 
-        defer {
-            previousSample = current
-            previousSampleTime = now
+        observeEnergy(in: current)
+        reading.power.cpuWatts = cpuMeter.watts
+        reading.power.gpuWatts = gpuMeter.watts
+        // An idle Neural Engine is power-gated and genuinely reads zero; a
+        // "0.00 W" tile for a block nothing is using is noise, not news.
+        reading.power.aneWatts = aneMeter.watts.flatMap { $0 > 0 ? $0 : nil }
+        // The package is a sum, and a sum with its largest term missing is
+        // not a smaller package — it is a different number wearing the
+        // label. Where the CPU's counters are not publishing (see
+        // `EnergyMeter`), the GPU alone used to be reported as the SoC.
+        if let cpu = cpuMeter.watts {
+            reading.power.packageWatts = cpu + (gpuMeter.watts ?? 0)
+                + (aneMeter.watts ?? 0) + (dramMeter.watts ?? 0)
         }
 
-        guard elapsed > 0,
-              let previous = previousSample,
+        guard let previous,
               let delta = createSamplesDelta(previous, current, nil)?.takeRetainedValue()
         else { return reading }
-
-        var energy = EnergyTotals()
 
         var efficiencyAccumulator = ResidencyAccumulator(states: efficiencyStates)
         var performanceAccumulator = ResidencyAccumulator(states: performanceStates)
@@ -180,18 +209,12 @@ final class IOReportSampler {
 
         iterate(delta) { [self] channel in
             let group = (channelGroup(channel)?.takeUnretainedValue() as String?) ?? ""
-            let name = (channelName(channel)?.takeUnretainedValue() as String?) ?? ""
-
             switch group {
-            case "Energy Model":
-                let unit = (channelUnit(channel)?.takeUnretainedValue() as String?) ?? "mJ"
-                let joules = Self.joules(simpleValue(channel, 0), unit: unit)
-                energy.add(joules, to: Self.channelKind(of: name))
-
             case "CPU Stats":
                 let subgroup = (channelSubGroup(channel)?.takeUnretainedValue() as String?) ?? ""
                 guard subgroup == "CPU Core Performance States" else { break }
                 // Channel names are cluster-scoped: `ECPU`, `PCPU`, `ECPU0`, …
+                let name = (channelName(channel)?.takeUnretainedValue() as String?) ?? ""
                 let upper = name.uppercased()
                 if upper.hasPrefix("E") {
                     accumulate(channel, into: &efficiencyAccumulator)
@@ -212,23 +235,85 @@ final class IOReportSampler {
             return 0
         }
 
-        let cpuEnergy = energy.cpu
-        let gpuEnergy = energy.gpu
-        let aneEnergy = energy.ane
-
-        if cpuEnergy > 0 { reading.power.cpuWatts = cpuEnergy / elapsed }
-        if gpuEnergy > 0 { reading.power.gpuWatts = gpuEnergy / elapsed }
-        if aneEnergy > 0 { reading.power.aneWatts = aneEnergy / elapsed }
-
-        let total = cpuEnergy + gpuEnergy + aneEnergy + energy.dram
-        if total > 0 { reading.power.packageWatts = total / elapsed }
-
         reading.efficiencyClockMHz = efficiencyAccumulator.averageMHz
         reading.performanceClockMHz = performanceAccumulator.averageMHz
         reading.gpuClockMHz = gpuAccumulator.averageMHz
 
         return reading
     }
+
+    /// Reads every energy counter's running total and publication stamp out
+    /// of a raw sample and feeds the meters.
+    ///
+    /// Totals, not the delta dictionary: a meter's window runs from one
+    /// publication of its block to the next, which on current systems spans
+    /// several samples, so it has to hold its own baseline.
+    private func observeEnergy(in sample: CFDictionary) {
+        let now = ProcessInfo.processInfo.systemUptime
+        var totals = EnergyTotals()
+        iterate(sample) { [self] channel in
+            guard (channelGroup(channel)?.takeUnretainedValue() as String?) == "Energy Model"
+            else { return 0 }
+            let name = (channelName(channel)?.takeUnretainedValue() as String?) ?? ""
+            let kind = Self.channelKind(of: name)
+            guard kind != .ignored else { return 0 }
+            let unit = (channelUnit(channel)?.takeUnretainedValue() as String?) ?? "mJ"
+            let raw = simpleValue(channel, 0)
+            totals.add(
+                EnergyMeter.Reading(
+                    joules: Self.joules(raw, unit: unit),
+                    stamp: publicationStamp(of: channel, value: raw, now: now)),
+                to: kind)
+            return 0
+        }
+
+        let rebase = needsRebaseline
+        needsRebaseline = false
+        for (meter, observed) in [
+            (\IOReportSampler.cpuMeter, totals.cpu),
+            (\IOReportSampler.gpuMeter, totals.gpu),
+            (\IOReportSampler.aneMeter, totals.ane),
+            (\IOReportSampler.dramMeter, totals.dram),
+        ] {
+            if rebase {
+                self[keyPath: meter].rebaseline(to: observed, at: now)
+            } else {
+                self[keyPath: meter].observe(observed, at: now)
+            }
+        }
+    }
+
+    /// When the driver last published this channel, in seconds on the uptime
+    /// clock — or `nil` where that cannot be read with confidence.
+    ///
+    /// The time lives in the channel's raw element: a 64-byte record whose
+    /// word at offset 24 is the publication's mach timestamp and whose word
+    /// at offset 32 is the counter itself. The layout is private, so it is
+    /// checked on every read: the counter word must be exactly the value
+    /// IOReport's own accessor returns, and the stamp must be a real time no
+    /// later than now. Anything else and the meter falls back to timing
+    /// publications by when it noticed them.
+    private func publicationStamp(
+        of channel: CFDictionary, value: Int64, now: TimeInterval
+    ) -> Double? {
+        guard let pointer = CFDictionaryGetValue(
+            channel, Unmanaged.passUnretained(rawElementsKey).toOpaque())
+        else { return nil }
+        let object = Unmanaged<CFTypeRef>.fromOpaque(pointer).takeUnretainedValue()
+        guard CFGetTypeID(object) == CFDataGetTypeID() else { return nil }
+        let data = unsafeDowncast(object, to: CFData.self)
+        guard CFDataGetLength(data) >= 40, let bytes = CFDataGetBytePtr(data) else { return nil }
+        let raw = UnsafeRawPointer(bytes)
+        guard raw.loadUnaligned(fromByteOffset: 32, as: Int64.self) == value else { return nil }
+        let stamp = raw.loadUnaligned(fromByteOffset: 24, as: UInt64.self)
+        let seconds = Double(stamp) * Self.secondsPerMachTick
+        guard stamp > 0, seconds <= now + 1 else { return nil }
+        return seconds
+    }
+
+    /// Held as instance state for the same reason `GPUSampler` holds its
+    /// keys: a `CFString` is immutable in fact but not `Sendable` in type.
+    private let rawElementsKey = "RawElements" as CFString
 
     // MARK: - Energy channels
 
@@ -255,31 +340,61 @@ final class IOReportSampler {
         case ignored
     }
 
+    /// Each level of the tree, summed across its channels.
     private struct EnergyTotals {
-        var cpuUnit = 0.0, cpuCluster = 0.0
-        var gpuUnit = 0.0, gpuRail = 0.0
-        var aneUnit = 0.0, aneRail = 0.0
-        var dramUnit = 0.0, dramRail = 0.0
+        var cpuUnit: EnergyMeter.Reading?, cpuCluster: EnergyMeter.Reading?
+        var gpuUnit: EnergyMeter.Reading?, gpuRail: EnergyMeter.Reading?
+        var aneUnit: EnergyMeter.Reading?, aneRail: EnergyMeter.Reading?
+        var dramUnit: EnergyMeter.Reading?, dramRail: EnergyMeter.Reading?
 
         /// Prefer the roll-up the platform publishes; fall back a level down.
-        var cpu: Double { cpuUnit > 0 ? cpuUnit : cpuCluster }
-        var gpu: Double { gpuUnit > 0 ? gpuUnit : gpuRail }
-        var ane: Double { aneUnit > 0 ? aneUnit : aneRail }
-        var dram: Double { dramUnit > 0 ? dramUnit : dramRail }
+        /// Chosen by whether the channel *exists*, not by whether it moved:
+        /// counters now publish in batches, and a level picked afresh by
+        /// "which one advanced this time" would switch between two levels'
+        /// running totals and meter the difference between them.
+        var cpu: EnergyMeter.Reading? { cpuUnit ?? cpuCluster }
+        var gpu: EnergyMeter.Reading? { gpuUnit ?? gpuRail }
+        var ane: EnergyMeter.Reading? { aneUnit ?? aneRail }
+        var dram: EnergyMeter.Reading? { dramUnit ?? dramRail }
 
-        mutating func add(_ joules: Double, to kind: ChannelKind) {
+        mutating func add(_ reading: EnergyMeter.Reading, to kind: ChannelKind) {
             switch kind {
-            case .cpuUnit: cpuUnit += joules
-            case .cpuCluster: cpuCluster += joules
-            case .gpuUnit: gpuUnit += joules
-            case .gpuRail: gpuRail += joules
-            case .aneUnit: aneUnit += joules
-            case .aneRail: aneRail += joules
-            case .dramUnit: dramUnit += joules
-            case .dramRail: dramRail += joules
+            case .cpuUnit: cpuUnit = cpuUnit.map { $0 + reading } ?? reading
+            case .cpuCluster: cpuCluster = cpuCluster.map { $0 + reading } ?? reading
+            case .gpuUnit: gpuUnit = gpuUnit.map { $0 + reading } ?? reading
+            case .gpuRail: gpuRail = gpuRail.map { $0 + reading } ?? reading
+            case .aneUnit: aneUnit = aneUnit.map { $0 + reading } ?? reading
+            case .aneRail: aneRail = aneRail.map { $0 + reading } ?? reading
+            case .dramUnit: dramUnit = dramUnit.map { $0 + reading } ?? reading
+            case .dramRail: dramRail = dramRail.map { $0 + reading } ?? reading
             case .ignored: break
             }
         }
+    }
+
+    /// Cuts the Energy Model subscription down to the channels `channelKind`
+    /// actually counts.
+    ///
+    /// The group is 162 channels on an M1 Pro and several hundred on the
+    /// larger chips — per core, per DVFS state, per SRAM bank — of which this
+    /// sampler reads eight. Every one subscribed is copied out of the kernel
+    /// on each sample and walked by the iterator; subscribing only the eight
+    /// took a power sample from 2.0 ms to 1.3 ms. A group whose names match
+    /// nothing is left whole, so an unfamiliar chip degrades to the old cost
+    /// rather than to no power readout.
+    private static func pruneEnergyChannels(
+        _ channels: CFMutableDictionary, name: ChannelStringFn
+    ) {
+        let dictionary = channels as NSMutableDictionary
+        guard let all = dictionary["IOReportChannels"] as? [CFDictionary] else { return }
+        let kept = NSMutableArray()
+        for channel in all {
+            let channelName = (name(channel)?.takeUnretainedValue() as String?) ?? ""
+            if channelKind(of: channelName) != .ignored { kept.add(channel) }
+        }
+        guard kept.count > 0 else { return }
+        // Mutable, because merging the stats groups appends to this array.
+        dictionary["IOReportChannels"] = kept
     }
 
     private static func channelKind(of name: String) -> ChannelKind {
@@ -306,14 +421,15 @@ final class IOReportSampler {
     }
 
     /// `GPU0`, `ANE0`, `DRAM0` — a block name followed only by its instance
-    /// index. Deliberately strict, so `GPU SRAM0` and `PCPUDTL0e` do not match.
+    /// index, or by nothing at all. Deliberately strict, so `GPU SRAM0` and
+    /// `PCPUDTL0e` do not match.
     private static func railKind(_ upper: String) -> ChannelKind? {
         for (prefix, kind) in [
             ("GPU", ChannelKind.gpuRail), ("ANE", .aneRail), ("DRAM", .dramRail),
         ] {
             guard upper.hasPrefix(prefix) else { continue }
             let suffix = upper.dropFirst(prefix.count)
-            if !suffix.isEmpty, suffix.allSatisfy(\.isNumber) { return kind }
+            if suffix.allSatisfy(\.isNumber) { return kind }
         }
         return nil
     }
@@ -407,5 +523,134 @@ final class IOReportSampler {
         if value > 1_000_000_0 { return value / 1_000_000 }
         if value > 1_000_0 { return value / 1_000 }
         return value
+    }
+}
+
+// MARK: - Energy metering
+
+/// Watts for one SoC block, from a cumulative energy counter that is not
+/// updated when it is read.
+///
+/// IOReport's energy counters used to advance on every read, so energy over
+/// the sample window divided by the window was the power. On macOS 27 they
+/// are *published*: the driver folds the accrued energy into the counter on
+/// its own schedule and stamps it. On an M5 Max the mJ channels are reported
+/// to publish every ~2.1 s, so a one-second reader sees 0, 36, 0, 33 W —
+/// the true figure never once. On the M1 Pro this was written on, the CPU,
+/// ANE and DRAM counters went more than ten minutes between publications,
+/// while GPU energy kept publishing several times a second. Dividing by the sample window turned all of that into
+/// either a blank or a multiple of the truth.
+///
+/// So a meter measures from one publication to the next: the energy added
+/// between them over the time between their stamps. Between publications it
+/// holds the last figure — that is the most recent thing actually known —
+/// and it lets go after `holdLimit`, or declines to publish at all when the
+/// span is so long that the average would describe minutes ago rather than
+/// now. A pure value type, so the checks can drive it with a synthetic
+/// timeline.
+struct EnergyMeter {
+    /// One observation: the block's running total and, where the driver's
+    /// stamp could be read, when that total was published.
+    struct Reading {
+        var joules: Double
+        /// Seconds on the uptime clock; `nil` when unavailable.
+        var stamp: Double?
+
+        /// Two channels of one block, summed. The later stamp stands for
+        /// both, since they publish together; one without a stamp makes the
+        /// sum unstamped.
+        static func + (lhs: Reading, rhs: Reading) -> Reading {
+            let stamp: Double? = lhs.stamp.flatMap { left in rhs.stamp.map { max(left, $0) } }
+            return Reading(joules: lhs.joules + rhs.joules, stamp: stamp)
+        }
+    }
+
+    /// A reading averaged over more than this describes the past, not the
+    /// present, and is withheld — the same plausibility ceiling every rate
+    /// sampler in the engine uses.
+    static let maximumSpan: TimeInterval = 30
+    /// How long a figure is held after its publication before the block is
+    /// treated as having stopped reporting.
+    static let holdLimit: TimeInterval = 10
+    /// Publications closer together than this are folded into the next span
+    /// rather than divided by a sliver of time.
+    static let minimumSpan: TimeInterval = 0.05
+
+    /// The current figure, if one is known.
+    var watts: Double? { held?.watts }
+
+    private var baseline: (joules: Double, time: Double)?
+    private var lastObserved: Reading?
+    private var held: (watts: Double, observedAt: Double)?
+    /// Cleared, for good, the first time the counter advances without its
+    /// stamp moving — proof that whatever sits where the stamp should be is
+    /// not a publication time on this system. Publications are then timed by
+    /// when they were noticed, which is exact wherever counters update on
+    /// every read and approximate where they are batched.
+    private(set) var trustsStamps = true
+
+    /// Feeds one observation. `nil` means the block reported nothing this
+    /// pass: its held figure only ages.
+    mutating func observe(_ reading: Reading?, at now: TimeInterval) {
+        guard let reading else {
+            expireIfStale(at: now)
+            return
+        }
+        guard let base = baseline, let last = lastObserved else {
+            rebaseline(to: reading, at: now)
+            return
+        }
+        // A counter that went backwards was reset — a driver reload. Nothing
+        // spanning the reset is meaningful.
+        guard reading.joules >= base.joules, reading.joules >= last.joules else {
+            rebaseline(to: reading, at: now)
+            return
+        }
+
+        let advanced = reading.joules > last.joules
+        if trustsStamps, advanced, let stamp = reading.stamp, stamp == last.stamp {
+            trustsStamps = false
+        }
+        if trustsStamps, let stamp = reading.stamp, let lastStamp = last.stamp, stamp < lastStamp {
+            trustsStamps = false
+        }
+
+        let published: Bool
+        let publishedAt: Double
+        if trustsStamps, let stamp = reading.stamp, let lastStamp = last.stamp {
+            published = stamp != lastStamp
+            publishedAt = stamp
+        } else {
+            published = advanced
+            publishedAt = now
+        }
+        lastObserved = reading
+
+        guard published else {
+            expireIfStale(at: now)
+            return
+        }
+        let span = publishedAt - base.time
+        guard span >= Self.minimumSpan else { return }
+        let joules = reading.joules - base.joules
+        held = span <= Self.maximumSpan ? (joules / span, now) : nil
+        baseline = (reading.joules, publishedAt)
+    }
+
+    /// Starts over from this observation, forgetting any figure held.
+    mutating func rebaseline(to reading: Reading?, at now: TimeInterval) {
+        held = nil
+        guard let reading else {
+            baseline = nil
+            lastObserved = nil
+            return
+        }
+        let time = trustsStamps ? (reading.stamp ?? now) : now
+        baseline = (reading.joules, time)
+        lastObserved = reading
+    }
+
+    private mutating func expireIfStale(at now: TimeInterval) {
+        if let held, now - held.observedAt > Self.holdLimit { self.held = nil }
     }
 }

@@ -71,11 +71,14 @@ round past two-thirds; a bungee drop from above the bar that boops the floor
 nose-first on every bounce; a sneeze wound up over half the cycle and let go
 all at once, hard enough under load to blow the rex off its feet; and a
 skateboard run — push, ollie, kick-turn — whose ollie spins the deck a full
-turn past two-thirds. The gallery also includes Dragon (wings and fire), Ninja
-(sword strikes and a trailing headband), Surf (carving waves), and Lift
-(barbell presses and squats). All of them are pure functions of `(time, load)` on
-the same colour ramp and pace curve, eyes blinked on a deterministic clock,
-and one headless check covers the lot. Everything below is drawn by the same
+turn past two-thirds. Four more take a prop: wings, for a long glide and one
+hard downstroke that turn into a fire run under load; a blade, wound up and
+swung in a lunge that leaves a crescent smear, and past two-thirds a hopping
+whirlwind slash; a surfboard on a rolling swell, spray off the lip and an air
+with a full rotation once the swell is big enough; and a barbell — press,
+wobbling lockout, squat, drive — whose plates grow with the load. All of them
+are pure functions of `(time, load)` on the same colour ramp and pace curve,
+eyes blinked on a deterministic clock, and one headless check covers the lot. Everything below is drawn by the same
 code that draws the menu bar, at the same proportions
 (`Tools/render-figures.swift` makes the picture):
 
@@ -229,7 +232,30 @@ channel whose name contains `CPU` therefore counts the same energy three or
 four times over — measured at 3.6× the true figure on an M1 Pro, and 2.1× for
 the GPU, which is enough to turn a 5 W idle into a plausible-looking 18 W. Only
 the whole-unit roll-ups are counted, with the cluster level kept as a fallback
-for chips that do not publish one.
+for chips that do not publish one — and only those channels are subscribed to,
+which took a power sample on an M1 Pro from 2.0 ms to 1.3 ms.
+
+### Energy counters are published, not read
+
+Up to macOS 26 an energy counter advanced every time it was read, so energy
+over the sample window divided by the window was the power. On macOS 27 the
+driver folds accrued energy into the counter on its own schedule and stamps
+the moment it did. On an M5 Max the millijoule channels are reported to
+publish every ~2.1 s, so a once-a-second reader sees 0 W, then twice the
+truth, then 0 W. On an
+M1 Pro the CPU, Neural Engine and DRAM counters went more than ten minutes
+between publications while the GPU's kept publishing several times a second —
+and the old arithmetic reported that GPU-only figure as the whole SoC.
+
+Each block is therefore metered from one publication to the next, using the
+stamp in the channel's raw record (checked against IOReport's own accessor on
+every read, and abandoned for observed timing if it ever disagrees). Between
+publications the last figure is held; a block silent for ten seconds, or a
+publication averaging over more than thirty, is reported as unavailable rather
+than as a number from the past; and the SoC total is only shown when the CPU —
+its largest term — is actually reporting. `Tools/power-check.swift` drives the
+meter through every-read, batched, frozen, stale, reset and rebaselined
+counters.
 
 ## Cost
 
@@ -383,18 +409,19 @@ preferences domain.
 
 ### Checks
 
-There is no test target; instead `Tools/` holds seven small programs that
+There is no test target; instead `Tools/` holds eight small programs that
 compile against the app's own source files and exercise them headlessly, and
 one script that runs them all:
 
 ```bash
 Tools/check.sh          # everything
 Tools/check.sh --pure   # only the checks that never read live hardware (what CI runs)
-Tools/check.sh visual   # one by name: visual ink readout clock ledger metrics engine
+Tools/check.sh visual   # one by name: visual ink readout clock power ledger metrics engine
 ```
 
-Four are deterministic — the drawing path, the colour ramp, the readout
-widths, and the history buffers and ledger against a synthetic timeline — and
+Five are deterministic — the drawing path, the colour ramp, the readout
+widths, the history buffers and ledger against a synthetic timeline, and the
+energy meter against synthetic publication schedules — and
 must pass everywhere. The other three sample the machine they run on, so their
 readings differ per Mac by design; what they assert is availability, finiteness,
 ranges and internally consistent counts. Run the whole set before opening a

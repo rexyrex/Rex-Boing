@@ -44,9 +44,13 @@ enum Visualizer: String, CaseIterable, Identifiable {
     /// The same tyrannosaur on a skateboard: push, ollie, kick-turn, repeat.
     case shred
 
+    /// The same tyrannosaur with wings; a fire run arrives with load.
     case dragon
+    /// The same tyrannosaur with a blade: wind-up, lunge, strike.
     case ninja
+    /// The same tyrannosaur riding a swell; an air arrives with load.
     case surf
+    /// The same tyrannosaur pressing and squatting a barbell.
     case lift
 
     /// Shared by the menu bar, gallery and rendering checks.
@@ -96,10 +100,10 @@ enum Visualizer: String, CaseIterable, Identifiable {
         case .bungee: return "The same tyrannosaur on a bungee cord, booping the floor with its nose on every bounce. A full twist on the recoil past two-thirds load."
         case .achoo: return "The same tyrannosaur winding up a sneeze and letting it go. A bigger sneeze with load: it skids the rex backwards, then flips it."
         case .shred: return "The same tyrannosaur on a skateboard — push, ollie, kick-turn and back. Past two-thirds load the ollie spins the deck a whole turn."
-        case .dragon: return "A winged rex riding the air. Under load, it breathes a flickering plume of fire."
-        case .ninja: return "A headband, a blade and a sweeping strike. Faster slashes and longer ribbons under load."
-        case .surf: return "Carving a rolling wave, with spray flying from the board. Bigger waves as the Mac gets busier."
-        case .lift: return "A tiny heavyweight pressing a barbell overhead, then sinking into a deep squat."
+        case .dragon: return "The same tyrannosaur with wings: a long glide, one hard downstroke. Under load the glide turns into a fire run."
+        case .ninja: return "The same tyrannosaur with a headband and a blade: wind up, lunge, strike. Past two-thirds load it leaves the ground for a whirlwind slash."
+        case .surf: return "The same tyrannosaur riding a swell — bottom turn, spray off the lip. Bigger waves with load, and past two-thirds an air with a full rotation."
+        case .lift: return "The same tyrannosaur at the gym: press, hold, squat, drive. The plates grow with load, and so does the wobble at lockout."
         }
     }
 
@@ -249,8 +253,10 @@ enum Visualizer: String, CaseIterable, Identifiable {
         case .bungee: drawBungee(time: time, energy: energy, pen: pen)
         case .achoo: drawAchoo(time: time, energy: energy, pen: pen)
         case .shred: drawShred(time: time, energy: energy, pen: pen)
-        case .dragon, .ninja, .surf, .lift:
-            drawAdventure(time: time, energy: energy, pen: pen)
+        case .dragon: drawDragon(time: time, energy: energy, pen: pen)
+        case .ninja: drawNinja(time: time, energy: energy, pen: pen)
+        case .surf: drawSurf(time: time, energy: energy, pen: pen)
+        case .lift: drawLift(time: time, energy: energy, pen: pen)
         }
     }
 }
@@ -368,6 +374,33 @@ private struct Pen {
         context.restoreGState()
     }
 
+    /// A polyline faded across the box by `envelope`, in `slices` strokes
+    /// of one alpha each, with butt caps so neighbouring slices abut instead
+    /// of overlapping.
+    ///
+    /// Solid strokes rather than one gradient, deliberately. The layer's
+    /// backing store is in the display's colour space, and a gradient
+    /// shading is converted into it through vImage on every draw — profiled
+    /// in the menu bar at roughly fifty microseconds a frame for one faded
+    /// hairline, where a solid colour is converted once per call from a
+    /// cache. Round caps, the other obvious choice, overlap at every join
+    /// and leave a brighter bead there at partial alpha.
+    func fadedStroke(_ points: [CGPoint], width: Double, peakAlpha: Double, slices: Int) {
+        guard points.count > 1, slices > 0 else { return }
+        context.saveGState()
+        context.setLineCap(.butt)
+        let segments = points.count - 1
+        for slice in 0..<slices {
+            let first = slice * segments / slices
+            let last = (slice + 1) * segments / slices
+            guard last > first else { continue }
+            let run = Array(points[first...last])
+            let mid = Double((run[0].x + run[run.count - 1].x) / 2 - rect.minX) / Double(rect.width)
+            stroke(run, width: width, alpha: peakAlpha * envelope(mid))
+        }
+        context.restoreGState()
+    }
+
     /// Punches a stroked polyline — the grin.
     func punchStroke(_ points: [CGPoint], width: Double) {
         guard points.count > 1 else { return }
@@ -428,12 +461,9 @@ private func spun(
 /// dancers a floor.
 private func rexGround(_ pen: Pen, time: Double, gy: Double, speed: Double) {
     let w = Double(pen.rect.width), h = Double(pen.rect.height)
-    for i in 0..<8 {
-        let p0 = Double(i) / 8, p1 = Double(i + 1) / 8
-        pen.stroke(
-            [CGPoint(x: p0 * w, y: gy), CGPoint(x: p1 * w, y: gy)],
-            width: 0.018, alpha: 0.16 * envelope((p0 + p1) / 2))
-    }
+    pen.fadedStroke(
+        (0...8).map { CGPoint(x: Double($0) / 8 * w, y: gy) },
+        width: 0.018, peakAlpha: 0.16, slices: 8)
     for k in 0..<6 {
         let pos = fract(Double(k) / 6 + 0.07 - time * speed)
         pen.stroke(
@@ -2480,150 +2510,719 @@ private extension Visualizer {
 
 // MARK: - Adventures
 
+// The adventure four — dragon, ninja, surf, lift — started life as one shared
+// rig with per-character branches: a smaller, spikier body that mostly stood
+// still while a prop moved. They are the same rex as the other twelve now,
+// each with its own choreography, and they keep the family's rules: the
+// whole silhouette moves, the head arrives a beat after the body, eyes squint
+// on effort, and any load-gated rotation is a whole number of turns.
+
+/// The neck and head on a body at `rot`, head dropped by `lag` (a fraction
+/// of the box) so it can follow through. Returns where the head landed, for
+/// the props that hang off it.
+@discardableResult
+private func rexNeckAndHead(
+    _ pen: Pen, body: CGPoint, rot: Double, mirror m: Double = 1,
+    lag: Double = 0, nod: Double = 0.06,
+    blink: Double, mouth: Double = 0, grin: Double = 0
+) -> CGPoint {
+    let h = Double(pen.rect.height)
+    func off(_ dx: Double, _ dy: Double) -> CGPoint {
+        spun(dx * m, dy, by: rot, around: body, unit: h)
+    }
+    let head = off(0.115, -0.182 + lag)
+    pen.fill([
+        off(0.048, -0.058), off(0.132, -0.122),
+        spun(-0.020 * m, 0.060, by: rot, around: head, unit: h),
+        spun(-0.085 * m, 0.025, by: rot, around: head, unit: h),
+    ], alpha: 1)
+    rexHead(
+        pen, at: head, rotation: rot + m * nod, mirror: m,
+        blink: blink, mouth: mouth, grin: grin)
+    return head
+}
+
+// MARK: Dragon
+
 private extension Visualizer {
-    /// Four prop-driven routines share a rig, but have separate choreography.
-    /// All coordinates remain deterministic, including ribbons, flame and spray.
-    func drawAdventure(time: Double, energy: Double, pen: Pen) {
-        let h = Double(pen.rect.height), w = Double(pen.rect.width)
-        pen.context.translateBy(x: 0, y: h)
+    /// A wingbeat, drawn the way a bird's reads from the side: a long glide
+    /// with the wings held up in a V, then one hard downstroke that lifts the
+    /// whole body, and a recovery. The world streams underneath. Under load
+    /// the glide becomes a fire run — the head rears back and the rex lets
+    /// go a plume that flickers on its own fast clock, embers trailing; at
+    /// rest, a wisp of smoke from the nostril is all it can manage.
+    func drawDragon(time: Double, energy: Double, pen: Pen) {
+        // Flipped y-down like the other characters; see drawRex.
+        pen.context.translateBy(x: 0, y: pen.rect.height)
         pen.context.scaleBy(x: 1, y: -1)
-        let phase = 2 * Double.pi * time
-        let beat = 0.5 - 0.5 * cos(phase)
-        let flap = sin(phase)
-        let gy = 0.88 * h
-        let x = w * (self == .dragon ? 0.42 : 0.48)
-        let crouch = self == .lift ? beat : (self == .ninja ? pow(beat, 3) : 0)
-        let hover = self == .dragon ? 0.07 + 0.035 * flap : 0
-        let ride = self == .surf ? 0.025 * sin(phase) : 0
-        let body = CGPoint(x: x, y: (0.59 + 0.09 * crouch - hover + ride) * h)
-        let tilt: Double = self == .surf ? 0.17 * sin(phase) :
-            (self == .ninja ? 0.24 * sin(phase) : -0.035 * flap)
-        func pt(_ dx: Double, _ dy: Double) -> CGPoint {
-            spun(dx, dy, by: tilt, around: body, unit: h)
-        }
-        if self != .dragon && self != .surf {
-            rexGround(pen, time: time, gy: gy, speed: self == .ninja ? 0.4 : 0)
-        }
-        if self == .surf {
-            // Two traveling wave crests and droplets beneath the carving board.
-            for row in 0..<2 {
-                let points = (0...32).map { i -> CGPoint in
-                    let u = Double(i) / 32
-                    return CGPoint(x: (0.08 + 0.84 * u) * w,
-                                   y: gy + (0.025 * Double(row) + 0.035 * sin(u * 4 * .pi - phase)) * h)
-                }
-                pen.stroke(points, width: row == 0 ? 0.032 : 0.018, alpha: row == 0 ? 0.65 : 0.25)
-            }
-            for i in 0..<4 {
-                let u = fract(time + Double(i) / 4)
-                pen.dot(at: CGPoint(x: x - (0.22 + 0.20 * u) * h,
-                                    y: gy - (0.02 + (0.12 + 0.08 * energy) * sin(.pi * u)) * h),
-                        radius: 0.015 * (1 - 0.5 * u), alpha: 0.65 * (1 - u))
-            }
-        }
-        rexZoom(pen, aboutX: x, groundY: gy, factor: 1.18)
-        rexShadow(pen, cx: x, gy: gy, width: 0.19 - hover, alpha: 0.15)
 
-        // The barbell goes down first, behind everything: at the bottom of
-        // the squat the bar sits across the back of the neck, and drawn over
-        // the head it read as a rod through the face.
-        let barY = (0.28 + 0.26 * beat) * h
-        if self == .lift {
-            pen.stroke([CGPoint(x: x - 0.39 * h, y: barY), CGPoint(x: x + 0.39 * h, y: barY)],
-                       width: 0.030, alpha: 1)
-            for side in [-1.0, 1.0] {
-                for plate in 0..<2 {
-                    let px = x + side * (0.30 + Double(plate) * 0.065) * h
-                    pen.stroke([CGPoint(x: px, y: barY - 0.07 * h), CGPoint(x: px, y: barY + 0.07 * h)],
-                               width: 0.05, alpha: 1)
-                }
-            }
+        let w = Double(pen.rect.width), h = Double(pen.rect.height)
+        let gy = 0.87 * h
+        rexGround(pen, time: time, gy: gy + 0.02 * h, speed: 0.55)
+
+        let phi = fract(time)                      // one cycle = one wingbeat
+        let P = 2 * .pi * time
+
+        // Wing elevation: +1 raised, −1 driven down. Raised through the
+        // glide, a fast power stroke, then back to the middle.
+        func wingAt(_ f: Double) -> Double {
+            let f = fract(f)
+            if f < 0.40 { return lerp(-0.30, 1, smoothstep(f / 0.40)) }
+            if f < 0.52 { return 1 }
+            if f < 0.74 { return lerp(1, -1, pow(smoothstep((f - 0.52) / 0.22), 0.8)) }
+            return lerp(-1, -0.30, smoothstep((f - 0.74) / 0.26))
+        }
+        // How hard the stroke is pulling right now: the body squashes into
+        // it, and the lift arrives a little after.
+        let pull = (phi > 0.52 && phi < 0.74) ? sin(.pi * (phi - 0.52) / 0.22) : 0
+
+        // Altitude: climbs on the downstroke, sinks through the glide.
+        let u = fract(phi - 0.52)
+        let climb = u < 0.36 ? smoothstep(u / 0.36) : 1 - smoothstep((u - 0.36) / 0.64)
+        let bob = (0.050 + 0.025 * energy) * h
+        let x = 0.40 * w + 0.018 * h * sin(P * 0.5)
+        let body = CGPoint(x: x, y: 0.565 * h - bob * climb)
+        // Nose dips into the glide, lifts as the stroke drives up.
+        let rot = 0.07 * wingAt(phi - 0.06) - 0.04 * pull + 0.02
+        let sy = 1 - 0.07 * pull, sx = 1 + 0.06 * pull
+        func off(_ dx: Double, _ dy: Double) -> CGPoint {
+            spun(dx, dy, by: rot, around: body, unit: h)
         }
 
-        if self == .dragon {
-            // Bat-like wings, both raised from the shoulder blades and swept
-            // back over the tail — a side view, so the near wing beats in
-            // front of the far one and neither crosses the face. A strong
-            // leading edge with a scalloped membrane behind it.
-            for (offset, alpha) in [(-0.06, 0.50), (0.04, 0.85)] {
-                let root = pt(-0.02 + offset, -0.05)
-                let tip = pt(-0.36 + offset, -0.22 - 0.13 * flap)
-                pen.fill([root, pt(-0.15 + offset, -0.31 - 0.06 * flap), tip,
-                          pt(-0.27 + offset, -0.07), pt(-0.17 + offset, -0.12),
-                          pt(-0.09 + offset, -0.01)], alpha: alpha)
-                pen.stroke([root, tip], width: 0.021, alpha: 1)
+        // The fire run, gated by load: anticipation, then the breath.
+        let fireGate = clamp01((energy - 0.30) / 0.25)
+        let rear = (phi < 0.10) ? sin(.pi * phi / 0.10) * fireGate : 0
+        let breath = (phi > 0.08 && phi < 0.50)
+            ? pow(sin(.pi * (phi - 0.08) / 0.42), 0.55) * fireGate : 0
+
+        // Smallest zoom of the cast: the raised wings need the airspace.
+        rexZoom(pen, aboutX: x, groundY: gy, factor: 1.12)
+        let altitude = clamp01((gy - body.y) / (0.45 * h))
+        rexShadow(
+            pen, cx: x + 0.02 * h, gy: gy,
+            width: 0.150 * (1 - 0.35 * altitude), alpha: 0.13 * (1 - 0.45 * altitude))
+
+        // A bat wing from the shoulder: a strong leading edge out to the
+        // tip, a scalloped membrane back to the hip. The tip travels an arc
+        // behind the shoulder — high above the head in the glide, well below
+        // the belly at the end of the stroke, swept furthest back in between
+        // — so the wing reads full length at every instant. `outline`
+        // punches a hairline round it first: the near wing crosses the body,
+        // and ink on ink would otherwise lose it entirely.
+        func drawWing(
+            lag: Double, shift: (Double, Double), scale: Double, alpha: Double, outline: Bool
+        ) {
+            let e = wingAt(phi - lag)
+            let root = off(-0.010 + shift.0, -0.080 + shift.1)
+            let hip = off(-0.120 + shift.0, -0.030 + shift.1)
+            let up = max(0, e), down = max(0, -e)
+            // Up: tall and swept back. Level: back and a little up, clear of
+            // the tail. Down: hanging well below the belly.
+            let tip = CGPoint(
+                x: root.x - (0.28 - 0.10 * up - 0.14 * down) * scale * h,
+                y: root.y - (0.11 + 0.23 * up - 0.42 * down) * scale * h)
+            // The wrist bows the leading edge away from the chord.
+            let wrist = CGPoint(
+                x: lerp(root.x, tip.x, 0.45) + (0.040 * up + 0.020) * scale * h,
+                y: lerp(root.y, tip.y, 0.45) - (0.050 * up - 0.030 * down) * scale * h)
+            func along(_ t: Double, sag: Double) -> CGPoint {
+                // Trailing edge from tip to hip, notched towards the root.
+                let px = lerp(tip.x, hip.x, t), py = lerp(tip.y, hip.y, t)
+                return CGPoint(x: px + (root.x - px) * sag, y: py + (root.y - py) * sag)
             }
-        }
-        if self == .surf {
-            pen.fillEllipse(at: CGPoint(x: x, y: gy - 0.025 * h),
-                            rx: 0.33, ry: 0.030, rotation: tilt * 0.5, alpha: 1)
+            let membrane = [
+                root, wrist, tip, along(0.24, sag: 0.16), along(0.40, sag: 0.03),
+                along(0.62, sag: 0.20), along(0.78, sag: 0.05), hip,
+            ]
+            if outline { pen.punchStroke(membrane + [root], width: 0.040) }
+            pen.fill(membrane, alpha: alpha)
+            pen.stroke([root, wrist, tip], width: 0.034 * scale, alpha: min(1, alpha + 0.2))
         }
 
-        let footY = self == .dragon ? body.y + 0.18 * h : gy - (self == .surf ? 0.055 * h : 0)
-        rexPlantLeg(pen, hip: pt(-0.05, 0.065), footX: x - 0.10 * h, footY: footY,
-                    kneeOut: 0.05 + 0.06 * crouch, mirror: 1, alpha: 0.65)
-        rexTail(pen, base: pt(-0.14, 0), wag1: 0.022 * h * sin(phase - 0.5),
-                wag2: 0.045 * h * sin(phase - 1), mirror: 1, alpha: 1)
-        // Three dorsal points give the larger silhouette a little attitude.
-        for i in 0..<3 {
-            let dx = -0.14 + Double(i) * 0.055
-            pen.fill([pt(dx - 0.035, -0.060), pt(dx - 0.022, -0.155),
-                      pt(dx + 0.025, -0.09)], alpha: 1)
-        }
-        pen.fillEllipse(at: body, rx: 0.17 * (1 + 0.08 * crouch),
-                        ry: 0.125 * (1 - 0.10 * crouch), rotation: tilt, alpha: 1)
-        rexPlantLeg(pen, hip: pt(0.045, 0.07), footX: x + (0.11 + 0.035 * crouch) * h,
-                    footY: footY, kneeOut: 0.055 + 0.05 * crouch, mirror: 1, alpha: 1)
-        let head = pt(0.11, -0.19)
-        pen.fill([pt(0.025, -0.07), pt(0.12, -0.15),
-                  pt(0.15, -0.19), pt(0.055, -0.22)], alpha: 1)
-        rexHead(pen, at: head, rotation: tilt + 0.04,
-                blink: blinkFactor(time: time, speed: 0.19),
-                mouth: self == .dragon ? 0.8 : 0, grin: 0.8)
+        // Far wing behind everything, a touch behind in time as well.
+        drawWing(lag: 0.03, shift: (-0.040, -0.015), scale: 0.86, alpha: 0.50, outline: false)
 
-        if self == .lift {
-            // Full press at the start, squat at mid-cycle; hands stay on the
-            // bar, which was drawn behind the body above.
-            for side in [-1.0, 1.0] {
-                rexArm(pen, shoulder: pt(side * 0.09, -0.03),
-                       elbow: CGPoint(x: x + side * 0.19 * h, y: body.y - 0.04 * h),
-                       hand: CGPoint(x: x + side * 0.23 * h, y: barY), alpha: 1)
+        // Legs tucked for flight, trailing a little and dangling with the
+        // stroke — knees up and feet clear of the belly.
+        let dangle = 0.014 * sin(P - 1.2)
+        let footFar = off(0.020, 0.165 + dangle), footNear = off(0.085, 0.152 + dangle)
+        rexPlantLeg(
+            pen, hip: off(-0.050, 0.075), footX: footFar.x, footY: footFar.y,
+            kneeOut: 0.060, mirror: 1, alpha: 0.85)
+
+        rexTail(
+            pen, base: off(-0.140, -0.005),
+            wag1: 0.030 * h * sin(P - 1.3), wag2: 0.066 * h * sin(P - 2.2),
+            mirror: 1, alpha: 1)
+
+        pen.fillEllipse(at: body, rx: 0.165 * sx, ry: 0.120 * sy, rotation: rot, alpha: 1)
+        rexPlantLeg(
+            pen, hip: off(0.042, 0.075), footX: footNear.x, footY: footNear.y,
+            kneeOut: 0.064, mirror: 1, alpha: 1)
+
+        // Near wing over the body: it is the one between us and the rex.
+        drawWing(lag: 0, shift: (0, 0), scale: 1, alpha: 1, outline: true)
+
+        // Arms tucked in flight.
+        let a0 = off(0.098, 0.010)
+        rexArm(
+            pen, shoulder: a0,
+            elbow: CGPoint(x: a0.x + 0.030 * h, y: a0.y + 0.030 * h),
+            hand: CGPoint(x: a0.x + 0.058 * h, y: a0.y + 0.012 * h), alpha: 1)
+
+        // The head rears back before the breath and pitches into it; it
+        // also trails the climb a beat, like every head in the family.
+        let lagClimb = fract(phi - 0.52 - 0.05)
+        let headLag = 0.022 * (lagClimb < 0.36 ? sin(.pi * lagClimb / 0.36) : 0)
+        let headRot = rot - 0.26 * rear + 0.10 * breath
+        let head = rexNeckAndHead(
+            pen, body: body, rot: rot, lag: headLag - 0.02 * rear,
+            nod: headRot - rot + 0.06,
+            blink: blinkFactor(time: time, speed: 0.21) * (1 - 0.45 * pull) * (1 - 0.4 * breath),
+            mouth: 0.95 * breath, grin: breath > 0.05 ? 0 : 0.8)
+
+        // Fire: a tapered plume from the mouth, forward and a little down,
+        // with an inner core and two tongues on their own flicker clocks.
+        let mouthAt = spun(0.150, 0.040, by: headRot + 0.06, around: head, unit: h)
+        if breath > 0.02 {
+            let length = (0.16 + 0.22 * fireGate + 0.06 * energy) * h * breath
+            let aim = headRot + 0.22
+            let dir = (x: cos(aim), y: sin(aim))
+            let side = (x: -dir.y, y: dir.x)
+            let f1 = sin(2 * .pi * time * 9.7), f2 = sin(2 * .pi * time * 13.3 + 1.1)
+            func at(_ along: Double, _ across: Double) -> CGPoint {
+                CGPoint(
+                    x: mouthAt.x + dir.x * along * length + side.x * across * h,
+                    y: mouthAt.y + dir.y * along * length + side.y * across * h)
             }
-        } else if self == .ninja {
-            // The sword traces a wide arc; the ribbon follows with a phase lag.
-            let angle = -1.4 + 2.2 * smoothstep(beat)
-            let hand = pt(0.19, -0.02)
-            rexArm(pen, shoulder: pt(0.08, -0.015), elbow: pt(0.14, 0.045), hand: hand, alpha: 1)
-            let tip = CGPoint(x: hand.x + 0.31 * h * cos(angle), y: hand.y + 0.31 * h * sin(angle))
-            pen.stroke([hand, tip], width: 0.033, alpha: 1)
-            pen.stroke([CGPoint(x: hand.x - 0.04 * h * sin(angle), y: hand.y + 0.04 * h * cos(angle)),
-                        CGPoint(x: hand.x + 0.04 * h * sin(angle), y: hand.y - 0.04 * h * cos(angle))], width: 0.026, alpha: 1)
-            pen.punchStroke([CGPoint(x: head.x - 0.09 * h, y: head.y - 0.04 * h),
-                             CGPoint(x: head.x + 0.07 * h, y: head.y - 0.04 * h)], width: 0.018)
-            for side in [-1.0, 1.0] {
-                pen.stroke([CGPoint(x: head.x - 0.08 * h, y: head.y - 0.035 * h),
-                            pt(-0.12, -0.20 + side * 0.025),
-                            pt(-0.25 - 0.06 * energy, -0.20 + side * 0.05 + 0.035 * sin(phase - 1))],
-                           width: 0.027, alpha: 0.8)
+            // Narrow at the mouth, billowing through the middle, licking
+            // out to a flickering point, with a hot core inside.
+            pen.fill([
+                at(0, -0.016), at(0.18, -0.050), at(0.40, -0.086 - 0.014 * f1),
+                at(0.62, -0.074 + 0.018 * f2), at(0.80, -0.044 - 0.012 * f2),
+                at(1.00 + 0.08 * f1, -0.010), at(0.86, 0.024 + 0.010 * f2),
+                at(0.95 + 0.06 * f2, 0.050), at(0.66, 0.068 + 0.012 * f1),
+                at(0.38, 0.072), at(0.16, 0.046), at(0, 0.018),
+            ], alpha: 0.60)
+            pen.fill([
+                at(0, -0.010), at(0.22, -0.034), at(0.46, -0.030 + 0.008 * f2),
+                at(0.66 + 0.06 * f2, 0.004), at(0.44, 0.036), at(0.20, 0.030),
+                at(0, 0.010),
+            ], alpha: 0.95)
+            // Embers peel off the tip and rise.
+            for k in 0..<3 {
+                let ep = fract(time * 2.3 + Double(k) / 3)
+                let ember = at(0.85 + 0.35 * ep, -0.04 * Double(k - 1))
+                pen.dot(
+                    at: CGPoint(x: ember.x, y: ember.y - 0.10 * h * ep),
+                    radius: 0.014 * (1 - 0.5 * ep), alpha: 0.7 * breath * (1 - ep))
             }
-            let arc = (0...12).map { i -> CGPoint in
-                let a = angle - Double(i) * 0.065
-                return CGPoint(x: hand.x + 0.35 * h * cos(a), y: hand.y + 0.35 * h * sin(a))
+        } else if fireGate < 0.5 {
+            // Not enough to breathe fire: a wisp of smoke on the glide.
+            let wisp = (phi > 0.10 && phi < 0.55) ? sin(.pi * (phi - 0.10) / 0.45) : 0
+            for k in 0..<2 {
+                let sp = clamp01((phi - 0.10 - 0.08 * Double(k)) / 0.45)
+                pen.dot(
+                    at: CGPoint(
+                        x: mouthAt.x + (0.02 + 0.07 * sp) * h,
+                        y: mouthAt.y - (0.05 + 0.13 * sp) * h),
+                    radius: 0.016 + 0.014 * sp,
+                    alpha: 0.30 * wisp * (1 - sp) * (1 - 2 * fireGate))
             }
-            pen.stroke(arc, width: 0.018, alpha: 0.15 + 0.35 * energy)
+        }
+    }
+}
+
+// MARK: Ninja
+
+private extension Visualizer {
+    /// One strike per cycle: a slow wind-up, the blade raised back over the
+    /// shoulder while the body coils; a lunge that crosses a fifth of the bar
+    /// in a blink with a crescent smear behind the blade; a held
+    /// follow-through; and a walk back to guard. The headband's tails stream
+    /// with the body's speed and whip past it when it stops. Past two-thirds
+    /// load the strike leaves the ground: a hop and a whole-turn whirlwind
+    /// slash, the smear a full circle.
+    func drawNinja(time: Double, energy: Double, pen: Pen) {
+        // Flipped y-down like the other characters; see drawRex.
+        pen.context.translateBy(x: 0, y: pen.rect.height)
+        pen.context.scaleBy(x: 1, y: -1)
+
+        let w = Double(pen.rect.width), h = Double(pen.rect.height)
+        let gy = 0.87 * h
+        rexGround(pen, time: time, gy: gy + 0.02 * h, speed: 0)
+
+        let phi = fract(time)                      // one cycle = one strike
+        let whirl = clamp01((energy - 0.62) / 0.16).rounded()
+        // The whirlwind gets a longer strike: a whole turn in a tenth of a
+        // cycle is two or three frames at the top pace, which reads as a
+        // twitch rather than a spin.
+        let windEnd = 0.44, strikeEnd = whirl > 0 ? 0.68 : 0.54, holdEnd = 0.82
+
+        let x0 = 0.37 * w, lunge = (0.13 + 0.03 * energy) * w
+        var x = x0, crouch = 0.0, lean = 0.05, blade = -0.95
+        var strike = 0.0, hop = 0.0, spin = 0.0, velocity = 0.0
+        if phi < windEnd {
+            let t = smoothstep(phi / windEnd)
+            crouch = 0.75 * t
+            lean = lerp(0.05, -0.16, t)
+            blade = lerp(-0.95, -2.55, t)
+        } else if phi < strikeEnd {
+            let t = (phi - windEnd) / (strikeEnd - windEnd)
+            let s = smoothstep(t)
+            x = lerp(x0, x0 + lunge, s)
+            velocity = sin(.pi * t)
+            crouch = lerp(0.75, 0.55, s) - 0.35 * velocity
+            lean = lerp(-0.16, 0.30, s)
+            blade = lerp(-2.55, 0.62, pow(s, 0.8))
+            strike = velocity
+            if whirl > 0 {
+                hop = sin(.pi * t)
+                spin = 2 * .pi * s
+            }
+        } else if phi < holdEnd {
+            let t = (phi - strikeEnd) / (holdEnd - strikeEnd)
+            x = x0 + lunge
+            crouch = 0.55 - 0.10 * t
+            lean = lerp(0.30, 0.24, t)
+            blade = 0.62 - 0.08 * t
         } else {
-            rexArm(pen, shoulder: pt(0.095, -0.015), elbow: pt(0.15, 0.015),
-                   hand: pt(0.20, self == .surf ? -0.08 : -0.025), alpha: 1)
+            let t = smoothstep((phi - holdEnd) / (1 - holdEnd))
+            x = lerp(x0 + lunge, x0, t)
+            velocity = -0.35 * sin(.pi * (phi - holdEnd) / (1 - holdEnd))
+            crouch = lerp(0.45, 0, t)
+            lean = lerp(0.24, 0.05, t)
+            blade = lerp(0.54, -0.95, t)
         }
-        if self == .dragon {
-            let fire = (0.4 + 0.6 * energy) * (0.65 + 0.35 * sin(phase * 2))
-            let origin = CGPoint(x: head.x + 0.14 * h, y: head.y + 0.05 * h)
-            pen.fill([origin,
-                      CGPoint(x: origin.x + 0.13 * h, y: origin.y - 0.045 * h),
-                      CGPoint(x: origin.x + (0.16 + 0.15 * fire) * h, y: origin.y - 0.065 * h),
-                      CGPoint(x: origin.x + 0.21 * fire * h, y: origin.y + 0.01 * h),
-                      CGPoint(x: origin.x + 0.27 * fire * h, y: origin.y + 0.07 * h),
-                      CGPoint(x: origin.x + 0.08 * h, y: origin.y + 0.045 * h)], alpha: 0.45 + 0.5 * energy)
+
+        let squash = crouch
+        let sy = 1 - 0.12 * squash + 0.08 * strike, sx = 1 + 0.10 * squash - 0.06 * strike
+        let body = CGPoint(
+            x: x, y: 0.595 * h + 0.060 * h * crouch - (0.13 + 0.05 * energy) * h * hop)
+        let rot = lean + spin
+        func off(_ dx: Double, _ dy: Double) -> CGPoint {
+            spun(dx, dy, by: rot, around: body, unit: h)
+        }
+
+        rexZoom(pen, aboutX: x, groundY: gy, factor: 1.18)
+        rexShadow(
+            pen, cx: x, gy: gy, width: 0.175 - 0.07 * hop, alpha: 0.16 * (1 - 0.5 * hop))
+
+        // Dust kicked back from the sliding feet as the lunge stops.
+        if phi > strikeEnd - 0.04 && phi < holdEnd {
+            let dp = clamp01((phi - strikeEnd + 0.04) / 0.20)
+            for k in 0..<3 {
+                pen.dot(
+                    at: CGPoint(
+                        x: x - (0.12 + 0.09 * Double(k) + 0.10 * dp) * h,
+                        y: gy - 0.02 * h - (0.02 + 0.02 * Double(k)) * h * dp),
+                    radius: 0.018 * (1 - 0.4 * dp), alpha: 0.42 * (1 - dp) * (1 - hop))
+            }
+        }
+
+        // The smear: a crescent swept behind the blade through the strike,
+        // fading out over the follow-through. A full ring for the whirlwind.
+        let shoulder = off(0.080, -0.040)
+        let handReach = 0.085 * h
+        let hand = CGPoint(
+            x: shoulder.x + handReach * cos(blade), y: shoulder.y + handReach * sin(blade))
+        let bladeLength = 0.30 * h
+        let smearFade = phi < windEnd ? 0
+            : (phi < strikeEnd ? 1 : max(0, 1 - (phi - strikeEnd) / 0.12))
+        if smearFade > 0.02 {
+            let sweep = whirl > 0 ? 2 * .pi * min(1, (phi - windEnd) / (strikeEnd - windEnd)) + 0.6
+                : min(2.4, max(0, blade + 2.55))
+            let steps = 14
+            var outer: [CGPoint] = [], inner: [CGPoint] = []
+            for i in 0...steps {
+                let a = blade + (whirl > 0 ? spin : 0) - sweep * Double(i) / Double(steps)
+                let fadeIn = 1 - Double(i) / Double(steps)
+                outer.append(CGPoint(
+                    x: hand.x + (bladeLength + 0.02 * h) * cos(a),
+                    y: hand.y + (bladeLength + 0.02 * h) * sin(a)))
+                inner.append(CGPoint(
+                    x: hand.x + (0.10 + 0.12 * (1 - fadeIn)) * h * cos(a),
+                    y: hand.y + (0.10 + 0.12 * (1 - fadeIn)) * h * sin(a)))
+            }
+            pen.fill(outer + inner.reversed(), alpha: (0.22 + 0.18 * energy) * smearFade)
+            pen.stroke(
+                Array(outer.prefix(steps / 2 + 1)), width: 0.020,
+                alpha: 0.55 * smearFade)
+        }
+
+        let bend = 0.05 + 0.07 * crouch
+        let footBack = CGPoint(x: x - (0.13 + 0.03 * crouch) * h, y: gy)
+        let footFront = CGPoint(x: x + (0.10 + 0.06 * crouch) * h, y: gy)
+        if hop > 0.02 {
+            let tuckBack = off(-0.030, 0.160), tuckFront = off(0.080, 0.150)
+            rexPlantLeg(
+                pen, hip: off(-0.050, 0.075), footX: tuckBack.x, footY: tuckBack.y,
+                kneeOut: 0.070, mirror: 1, alpha: 0.85)
+            rexTail(
+                pen, base: off(-0.140, -0.005),
+                wag1: 0.020 * h, wag2: 0.050 * h, mirror: 1, alpha: 1)
+            pen.fillEllipse(at: body, rx: 0.165 * sx, ry: 0.120 * sy, rotation: rot, alpha: 1)
+            rexPlantLeg(
+                pen, hip: off(0.042, 0.075), footX: tuckFront.x, footY: tuckFront.y,
+                kneeOut: 0.072, mirror: 1, alpha: 1)
+        } else {
+            rexPlantLeg(
+                pen, hip: off(-0.050, 0.075), footX: footBack.x, footY: footBack.y,
+                kneeOut: bend, mirror: 1, alpha: 0.85)
+            rexTail(
+                pen, base: off(-0.140, -0.005),
+                wag1: 0.020 * h * sin(2 * .pi * time) - 0.030 * h * strike,
+                wag2: 0.046 * h * sin(2 * .pi * time - 0.7) - 0.050 * h * strike,
+                mirror: 1, alpha: 1)
+            pen.fillEllipse(at: body, rx: 0.165 * sx, ry: 0.120 * sy, rotation: rot, alpha: 1)
+            rexPlantLeg(
+                pen, hip: off(0.042, 0.075), footX: footFront.x, footY: footFront.y,
+                kneeOut: bend + 0.01, mirror: 1, alpha: 1)
+        }
+
+        // Head, then the headband over it: a band punched across the brow and
+        // two tails knotted at the back. The tails stream back with forward
+        // speed, swing through when the body stops, and grow with load.
+        let lagPhi = fract(phi - 0.05)
+        let lagStop = (lagPhi > strikeEnd && lagPhi < strikeEnd + 0.12)
+            ? sin(.pi * (lagPhi - strikeEnd) / 0.12) : 0
+        let head = rexNeckAndHead(
+            pen, body: body, rot: rot, lag: 0.030 * lagStop,
+            nod: 0.06 + 0.10 * lagStop,
+            blink: blinkFactor(time: time, speed: 0.23) * 0.62 * (1 - 0.4 * strike),
+            mouth: 0.55 * strike, grin: 0)
+        func headPt(_ dx: Double, _ dy: Double) -> CGPoint {
+            spun(dx, dy, by: rot + 0.06, around: head, unit: h)
+        }
+        pen.punchStroke([headPt(-0.080, -0.045), headPt(0.070, -0.052)], width: 0.020)
+        let knot = headPt(-0.098, -0.040)
+        let ribbon = (0.12 + 0.08 * energy) * h
+        for k in 0..<2 {
+            let spread = Double(k) * 0.35 - 0.10
+            let flutter = 0.35 * sin(2 * .pi * time * 2.6 - Double(k) * 1.4)
+            // Pointing back and a little down at rest; velocity swings them
+            // level behind a lunge and forward past the head on the stop.
+            let angle = .pi - 0.40 + spread - 0.30 * velocity + 0.9 * lagStop + flutter * 0.4
+            let mid = CGPoint(
+                x: knot.x + 0.5 * ribbon * cos(angle + 0.25 * flutter),
+                y: knot.y + 0.5 * ribbon * sin(angle + 0.25 * flutter))
+            let end = CGPoint(
+                x: mid.x + 0.5 * ribbon * cos(angle - 0.3 * flutter),
+                y: mid.y + 0.5 * ribbon * sin(angle - 0.3 * flutter))
+            pen.stroke([knot, mid, end], width: 0.026, alpha: k == 0 ? 1 : 0.7)
+        }
+
+        // The sword, over everything: grip, guard and blade from the hand.
+        let bladeAngle = blade + (whirl > 0 ? spin : 0)
+        let handNow = whirl > 0
+            ? CGPoint(
+                x: shoulder.x + handReach * cos(bladeAngle),
+                y: shoulder.y + handReach * sin(bladeAngle))
+            : hand
+        let dir = (x: cos(bladeAngle), y: sin(bladeAngle))
+        rexArm(
+            pen, shoulder: shoulder,
+            elbow: CGPoint(
+                x: (shoulder.x + handNow.x) / 2 + 0.018 * h,
+                y: (shoulder.y + handNow.y) / 2 + 0.022 * h),
+            hand: handNow, alpha: 1)
+        pen.stroke(
+            [CGPoint(x: handNow.x - dir.x * 0.050 * h, y: handNow.y - dir.y * 0.050 * h),
+             CGPoint(x: handNow.x + dir.x * bladeLength, y: handNow.y + dir.y * bladeLength)],
+            width: 0.030, alpha: 1)
+        pen.stroke(
+            [CGPoint(x: handNow.x + dir.x * 0.020 * h - dir.y * 0.036 * h,
+                     y: handNow.y + dir.y * 0.020 * h + dir.x * 0.036 * h),
+             CGPoint(x: handNow.x + dir.x * 0.020 * h + dir.y * 0.036 * h,
+                     y: handNow.y + dir.y * 0.020 * h - dir.x * 0.036 * h)],
+            width: 0.026, alpha: 1)
+    }
+}
+
+// MARK: Surf
+
+private extension Visualizer {
+    /// Riding a swell that rolls in under the board, one crest per cycle:
+    /// a crouched bottom turn in the trough, a drive up the face, a snap at
+    /// the lip that throws a fan of spray, and back down. The board lies on
+    /// the water's slope, so the whole rex rocks with it. Load raises the
+    /// swell; past two-thirds the lip becomes a launch ramp and the top turn
+    /// an air with a whole rotation, board and all.
+    func drawSurf(time: Double, energy: Double, pen: Pen) {
+        // Flipped y-down like the other characters; see drawRex.
+        pen.context.translateBy(x: 0, y: pen.rect.height)
+        pen.context.scaleBy(x: 1, y: -1)
+
+        let w = Double(pen.rect.width), h = Double(pen.rect.height)
+        let gy = 0.87 * h
+        let phi = fract(time)                      // one cycle = one crest
+
+        // The swell rolls right to left; the rider holds the middle of the
+        // box and carves a little forward and back across the face.
+        let amplitude = (0.055 + 0.070 * energy) * h
+        let still = gy - 0.030 * h
+        func surface(_ px: Double) -> Double {
+            still - amplitude * (0.5 + 0.5 * cos(2 * .pi * (px / w - 0.5 + phi - 0.55)))
+        }
+        func slope(_ px: Double) -> Double {
+            let d = 0.02 * w
+            return atan2(surface(px + d) - surface(px - d), 2 * d)
+        }
+
+        // Water: a translucent body under a brighter surface line, both
+        // fading out at the ends of the bar like the ground does. The body
+        // fades by shape rather than by alpha — its depth tapers to nothing
+        // at the ends — so it is one solid fill: alpha slices banded
+        // visibly across an area this size, and a gradient is converted
+        // into the display's colour space on every frame.
+        let columns = 24
+        var line: [CGPoint] = [], floor: [CGPoint] = []
+        for i in 0...columns {
+            let u = Double(i) / Double(columns)
+            let y = surface(u * w)
+            line.append(CGPoint(x: u * w, y: y))
+            floor.append(CGPoint(x: u * w, y: y + 0.26 * h * envelope(u)))
+        }
+        pen.fill(line + floor.reversed(), alpha: 0.16)
+        pen.fadedStroke(line, width: 0.030, peakAlpha: 0.80, slices: 8)
+        // Foam flecks riding the swell.
+        for k in 0..<5 {
+            let fx = fract(Double(k) / 5 + phi * 0.35) * w
+            pen.dot(
+                at: CGPoint(x: fx, y: surface(fx) + 0.05 * h),
+                radius: 0.012, alpha: 0.30 * envelope(fx / w))
+        }
+
+        let carve = 0.045 * h * sin(2 * .pi * (phi - 0.20))
+        let x = 0.47 * w + carve
+        let crest = (phi > 0.40 && phi < 0.70) ? sin(.pi * (phi - 0.40) / 0.30) : 0
+        let trough = (phi < 0.18 || phi > 0.92)
+            ? sin(.pi * fract(phi + 0.08) / 0.26) : 0
+        let air = clamp01((energy - 0.62) / 0.16).rounded()
+        let airT = clamp01((phi - 0.42) / 0.36)
+        let lift = air * sin(.pi * airT) * (0.16 + 0.04 * energy) * h
+        let spin = air * 2 * .pi * smoothstep(airT)
+
+        // The spin turns rider and board together about the rider's middle.
+        // Turned about the board instead, the inverted rex hung below it at
+        // the top of the air — under the sea and off the bottom of the bar.
+        let pivot = CGPoint(x: x, y: surface(x) - lift - 0.11 * h)
+        let board = spun(0, 0.11, by: spin, around: pivot, unit: h)
+        let boardRot = slope(x) * 0.9 + spin
+        func deck(_ dx: Double, _ dy: Double) -> CGPoint {
+            spun(dx, dy, by: boardRot, around: board, unit: h)
+        }
+
+        let crouch = 0.8 * trough + 0.25 * (1 - crest)
+        let sy = 1 - 0.14 * crouch + 0.06 * crest, sx = 1 + 0.10 * crouch - 0.04 * crest
+        // The body leans with most of the slope but takes the whole spin:
+        // a fraction of a turn would land the rex tilted off the board.
+        let rot = slope(x) * 0.63 + spin + 0.10 - 0.06 * crest
+        let body = spun(0, -0.215 + 0.045 * crouch, by: boardRot, around: board, unit: h)
+        func off(_ dx: Double, _ dy: Double) -> CGPoint {
+            spun(dx, dy, by: rot, around: body, unit: h)
+        }
+
+        rexZoom(pen, aboutX: x, groundY: gy, factor: 1.16)
+
+        // Spray thrown off the tail at the lip, a fan of droplets that rise
+        // and fall on their own arcs. Bigger and further under load.
+        let sprayT = clamp01((phi - 0.48) / 0.40)
+        if sprayT > 0 && sprayT < 1 {
+            let tailAt = deck(-0.20, 0.0)
+            for k in 0..<5 {
+                let angle = -2.0 - 0.28 * Double(k)
+                let reach = (0.16 + 0.12 * energy + 0.02 * Double(k)) * h * sprayT
+                let fall = 0.30 * h * sprayT * sprayT
+                pen.dot(
+                    at: CGPoint(
+                        x: tailAt.x + reach * cos(angle),
+                        y: tailAt.y + reach * sin(angle) + fall),
+                    radius: 0.017 * (1 - 0.5 * sprayT),
+                    alpha: 0.60 * (1 - sprayT) * (0.5 + 0.5 * energy))
+            }
+        }
+
+        // The board: a long flat oval with a fin under the tail, cut out of
+        // the water line it rides on — ink on ink, the two merged into one
+        // thick stroke and the rex looked to be standing on the sea.
+        pen.punch(at: board, rx: 0.262, ry: 0.052, rotation: boardRot)
+        pen.fill(
+            [deck(-0.19, 0.030), deck(-0.17, 0.070), deck(-0.14, 0.030)], alpha: 1)
+        pen.fillEllipse(at: board, rx: 0.235, ry: 0.032, rotation: boardRot, alpha: 1)
+
+        let backFoot = deck(-0.085, -0.020), frontFoot = deck(0.080, -0.020)
+        let bend = 0.05 + 0.08 * crouch
+        rexPlantLeg(
+            pen, hip: off(-0.050, 0.075), footX: backFoot.x, footY: backFoot.y,
+            kneeOut: bend, mirror: 1, alpha: 0.85)
+        rexTail(
+            pen, base: off(-0.140, -0.005),
+            wag1: 0.026 * h * sin(2 * .pi * time - 0.8),
+            wag2: 0.055 * h * sin(2 * .pi * time - 1.6) - 0.03 * h * crest,
+            mirror: 1, alpha: 1)
+        pen.fillEllipse(at: body, rx: 0.165 * sx, ry: 0.120 * sy, rotation: rot, alpha: 1)
+        rexPlantLeg(
+            pen, hip: off(0.042, 0.075), footX: frontFoot.x, footY: frontFoot.y,
+            kneeOut: bend + 0.01, mirror: 1, alpha: 1)
+
+        // Arms out for balance: the far one back, the near one forward and
+        // rising through the top turn.
+        rexArm(
+            pen, shoulder: off(0.060, -0.020), elbow: off(0.010, -0.075),
+            hand: off(-0.050, -0.110), alpha: 0.45)
+        let reachUp = 0.5 + 0.5 * crest
+        rexArm(
+            pen, shoulder: off(0.095, -0.030), elbow: off(0.150, -0.050 - 0.020 * reachUp),
+            hand: off(0.200, -0.060 - 0.060 * reachUp), alpha: 1)
+
+        let lagT = fract(phi + 0.08 - 0.05)
+        let lagTrough = lagT < 0.26 ? sin(.pi * lagT / 0.26) : 0
+        let stoke = crest * (0.3 + 0.6 * energy)
+        rexNeckAndHead(
+            pen, body: body, rot: rot, lag: 0.028 * lagTrough, nod: 0.05 + 0.08 * lagTrough,
+            blink: blinkFactor(time: time, speed: 0.19) * (1 - 0.45 * trough),
+            mouth: stoke, grin: 1 - stoke)
+    }
+}
+
+// MARK: Lift
+
+private extension Visualizer {
+    /// A full set in one cycle: press the bar from the shoulders to lockout,
+    /// hold it there, rack it, sink into a deep squat and drive back up.
+    /// The hold is where load shows — the plates grow, the bar bows at its
+    /// ends and wobbles, the arms tremble and the rex sweats — and every
+    /// change of direction squashes the body with the head a beat behind.
+    func drawLift(time: Double, energy: Double, pen: Pen) {
+        // Flipped y-down like the other characters; see drawRex.
+        pen.context.translateBy(x: 0, y: pen.rect.height)
+        pen.context.scaleBy(x: 1, y: -1)
+
+        let w = Double(pen.rect.width), h = Double(pen.rect.height)
+        let gy = 0.87 * h
+        rexGround(pen, time: time, gy: gy + 0.02 * h, speed: 0)
+
+        let phi = fract(time)                      // one cycle = one rep
+        // 0.00 press · 0.14 hold · 0.46 rack · 0.58 squat · 0.80 drive · 1.00
+        var press = 0.0, squat = 0.0, impact = 0.0
+        if phi < 0.14 {
+            press = smoothstep(phi / 0.14)
+        } else if phi < 0.46 {
+            press = 1
+            impact = phi < 0.22 ? sin(.pi * (phi - 0.14) / 0.08) : 0
+        } else if phi < 0.58 {
+            press = 1 - smoothstep((phi - 0.46) / 0.12)
+            impact = phi > 0.54 ? sin(.pi * (phi - 0.54) / 0.08) * 0.8 : 0
+        } else if phi < 0.80 {
+            squat = smoothstep((phi - 0.58) / 0.22)
+        } else {
+            // Out of the hole fast, easing into the top.
+            let t = (phi - 0.80) / 0.20
+            squat = 1 - (1 - pow(1 - t, 2.2))
+        }
+        let holding = phi > 0.14 && phi < 0.46
+        let strain = holding ? pow(energy, 1.5) : 0
+        let tremble = strain * 0.010 * h * sin(2 * .pi * time * 11.3)
+
+        let x = 0.50 * w
+        let body = CGPoint(x: x, y: 0.600 * h + 0.105 * h * squat + 0.012 * h * impact)
+        let sy = 1 - 0.16 * squat - 0.10 * impact, sx = 1 + 0.12 * squat + 0.08 * impact
+        let rot = 0.04 + 0.14 * squat
+        func off(_ dx: Double, _ dy: Double) -> CGPoint {
+            spun(dx, dy, by: rot, around: body, unit: h)
+        }
+
+        rexZoom(pen, aboutX: x, groundY: gy, factor: 1.14)
+        rexShadow(pen, cx: x, gy: gy, width: 0.190, alpha: 0.16)
+
+        // Where the head will be, before drawing it: the bar rests just
+        // behind it on the rack and locks out above it.
+        let lagPhi = fract(phi - 0.05)
+        let lagSquat = lagPhi > 0.58 && lagPhi < 0.80
+            ? smoothstep((lagPhi - 0.58) / 0.22)
+            : (lagPhi >= 0.80 ? 1 - (1 - pow(1 - (lagPhi - 0.80) / 0.20, 2.2)) : 0)
+        let headLag = 0.030 * max(0, lagSquat - squat) + 0.022 * impact
+        let neckTop = off(0.060, -0.150)
+        let rackY = neckTop.y + 0.010 * h
+        let lockY = body.y - (0.43 - 0.02 * energy) * h
+        let barY = lerp(rackY, lockY, press) + tremble
+        let barX = x + lerp(-0.010, 0.030, press) * h
+
+        // Plates grow with the load rather than stepping in count, so the
+        // bar never pops from one weight to the next.
+        let plate = (0.050 + 0.040 * energy) * h
+        let half = 0.40 * h
+        // The bar bows at its ends under the plates, and the hold sets it
+        // wobbling — more, and slower to settle, the heavier it is.
+        let settle = holding ? exp(-(phi - 0.14) * 9) : 0
+        let flex = (0.010 + 0.030 * energy) * h * press
+            * (1 + 0.8 * settle * sin(2 * .pi * (phi - 0.14) * 7))
+        func barPoint(_ u: Double) -> CGPoint {
+            CGPoint(x: barX + u * half, y: barY + flex * u * u)
+        }
+
+        pen.stroke((0...8).map { barPoint(Double($0) / 4 - 1) }, width: 0.030, alpha: 1)
+        for side in [-1.0, 1.0] {
+            for k in 0..<2 {
+                let u = side * (0.74 + 0.13 * Double(k))
+                let c = barPoint(u)
+                let r = plate * (k == 0 ? 1 : 0.78)
+                pen.stroke(
+                    [CGPoint(x: c.x, y: c.y - r), CGPoint(x: c.x, y: c.y + r)],
+                    width: 0.052, alpha: 1)
+            }
+            let collar = barPoint(side * 0.64)
+            pen.stroke(
+                [CGPoint(x: collar.x, y: collar.y - 0.028 * h),
+                 CGPoint(x: collar.x, y: collar.y + 0.028 * h)],
+                width: 0.024, alpha: 1)
+        }
+
+        let bend = 0.05 + 0.13 * squat
+        rexPlantLeg(
+            pen, hip: off(-0.050, 0.075), footX: x - (0.10 + 0.02 * squat) * h, footY: gy,
+            kneeOut: bend, mirror: 1, alpha: 0.85)
+        rexTail(
+            pen, base: off(-0.140, -0.005),
+            wag1: 0.016 * h * sin(2 * .pi * time) + 0.030 * h * press,
+            wag2: 0.030 * h * sin(2 * .pi * time - 0.7) + 0.020 * h * press - 0.04 * h * squat,
+            mirror: 1, alpha: 1)
+        pen.fillEllipse(at: body, rx: 0.165 * sx, ry: 0.120 * sy, rotation: rot, alpha: 1)
+        rexPlantLeg(
+            pen, hip: off(0.042, 0.075), footX: x + (0.11 + 0.04 * squat) * h, footY: gy,
+            kneeOut: bend + 0.012, mirror: 1, alpha: 1)
+
+        // Both hands on the bar; the far arm dimmer behind the body.
+        for (dx, alpha) in [(-0.045, 0.50), (0.050, 1.0)] {
+            let shoulder = off(0.070 + dx * 0.3, -0.040)
+            let hand = CGPoint(x: barX + dx * h, y: barY + 0.006 * h)
+            let elbow = CGPoint(
+                x: (shoulder.x + hand.x) / 2 + (0.050 - 0.030 * press) * h,
+                y: (shoulder.y + hand.y) / 2 + 0.030 * h * (1 - press) + tremble * 0.5)
+            rexArm(pen, shoulder: shoulder, elbow: elbow, hand: hand, alpha: alpha)
+        }
+
+        // Effort on the face: eyes squeezed through the drive and the hold,
+        // teeth gritted rather than grinning.
+        let drive = phi > 0.80 ? sin(.pi * (phi - 0.80) / 0.20) : 0
+        let squeeze = max(drive, strain) * (0.4 + 0.5 * energy)
+        let head = rexNeckAndHead(
+            pen, body: body, rot: rot, lag: headLag, nod: 0.05 + 0.08 * impact,
+            blink: blinkFactor(time: time, speed: 0.18) * (1 - 0.6 * squeeze) * (1 - 0.4 * impact),
+            grin: 1)
+
+        // Sweat under a heavy hold, the same drops the gallop sheds.
+        let sweatGate = clamp01((energy - 0.55) / 0.30) * (holding ? 1 : 0.4)
+        if sweatGate > 0.01 {
+            for k in 0..<2 {
+                let dp = fract(time * 1.3 + Double(k) * 0.5)
+                pen.dot(
+                    at: CGPoint(
+                        x: head.x + (k == 0 ? -1 : 0.5) * (0.05 + 0.10 * dp) * h,
+                        y: head.y - (0.09 + 0.05 * dp - 0.12 * dp * dp) * h),
+                    radius: 0.016, alpha: (1 - dp) * 0.8 * sweatGate)
+            }
         }
     }
 }
