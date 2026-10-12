@@ -3,435 +3,503 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Rex Boing — a T-rex menu bar system monitor for macOS</title>
-<meta name="description" content="A tiny tyrannosaur runs in your Mac's menu bar and speeds up as your Mac works harder. Click it to see why: per-app CPU, GPU, memory, energy and disk, real watts, every sensor. Free, open source, no sudo.">
+<title>Rex Boing — the menu bar monitor that shows you why your Mac is busy</title>
+<meta name="description" content="A tiny T-rex runs in your Mac's menu bar and speeds up as your Mac works harder. Click it to see why: per-app CPU, GPU, memory, energy and disk, real watts, every sensor. Free, open source, no sudo.">
 <meta property="og:title" content="Rex Boing">
-<meta property="og:description" content="A cute menu bar pet shows you that your Mac is busy. Rex Boing shows you why. Free and open source for macOS.">
+<meta property="og:description" content="Your Mac is busy. Rex Boing shows you why. A free, open-source menu bar monitor for macOS.">
 <meta property="og:image" content="https://rexyrex.github.io/Rex-Boing/site/og.jpg">
 <meta property="og:url" content="https://rexyrex.github.io/Rex-Boing/">
 <meta property="og:type" content="website">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:image" content="https://rexyrex.github.io/Rex-Boing/site/og.jpg">
-<meta name="theme-color" content="#FA8F3D">
+<meta name="theme-color" content="#F6F7F9" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0C0D10" media="(prefers-color-scheme: dark)">
 <link rel="icon" type="image/png" href="site/icon-64.png">
 <link rel="apple-touch-icon" href="site/icon-180.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
   :root {
-    --orange: #FA8F3D;
-    --ink: #1E1E21;
-    --paper: #F2F2F2;
-    --bar: #26262A;
-    --line: rgba(30, 30, 33, 0.14);
-    --muted-on-ink: #A3A3AA;
-    --muted-on-paper: #5C5C63;
-    --surface: var(--paper);
-    --tile: var(--ink);
-    --on-surface: var(--ink);
-    --muted: var(--muted-on-paper);
-    --display: "Montserrat", -apple-system, BlinkMacSystemFont, sans-serif;
-    --text: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", system-ui, sans-serif;
-    --mono: ui-monospace, "SF Mono", Menlo, monospace;
-    --gutter: clamp(16px, 4vw, 48px);
-    --measure: 1180px;
+    color-scheme: light dark;
+    --bg: #F6F7F9;
+    --raise: #FFFFFF;
+    --fg: #15171C;
+    --fg-2: #5B606B;
+    --line: #E2E4E9;
+    --button: #15171C;
+    --button-fg: #FFFFFF;
+    --nav: rgba(246, 247, 249, 0.78);
+    --ui: #1E1E21;            /* the app's own popover ground */
+    --cpu: #4C9BFF;
+    --gpu: #B07CFF;
+    --mem: #3FD08F;
+    --power: #F5C84A;
+    --sans: "Geist", -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+    --mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
+    --gutter: clamp(16px, 4vw, 40px);
+    --max: 1180px;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
-      --surface: #161618;
-      --on-surface: #EDEDEF;
-      --muted: #A3A3AA;
-      --line: rgba(255, 255, 255, 0.12);
-      --tile: #232327;
+      --bg: #0C0D10;
+      --raise: #15171B;
+      --fg: #ECEEF2;
+      --fg-2: #969BA6;
+      --line: #24272E;
+      --button: #ECEEF2;
+      --button-fg: #0C0D10;
+      --nav: rgba(12, 13, 16, 0.72);
     }
   }
   :root[data-theme="dark"] {
-    --tile: #232327;
-    --surface: #161618;
-    --on-surface: #EDEDEF;
-    --muted: #A3A3AA;
-    --line: rgba(255, 255, 255, 0.12);
+    --bg: #0C0D10;
+    --raise: #15171B;
+    --fg: #ECEEF2;
+    --fg-2: #969BA6;
+    --line: #24272E;
+    --button: #ECEEF2;
+    --button-fg: #0C0D10;
+    --nav: rgba(12, 13, 16, 0.72);
   }
 
   * { box-sizing: border-box; }
-  html { scroll-behavior: smooth; scroll-padding-top: 64px; }
+  html { scroll-behavior: smooth; scroll-padding-top: 72px; }
   @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
   body {
     margin: 0;
-    background: var(--orange);
-    color: var(--ink);
-    font: 18px/1.55 var(--text);
+    background: var(--bg);
+    color: var(--fg);
+    font: 17px/1.6 var(--sans);
     -webkit-font-smoothing: antialiased;
     overflow-x: hidden;
   }
-  img, video { display: block; max-width: 100%; }
+  img, video { display: block; max-width: 100%; height: auto; }
   a { color: inherit; }
-  :focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; border-radius: 4px; }
-  .on-ink :focus-visible { outline-color: var(--orange); }
-  .wrap { max-width: var(--measure); margin: 0 auto; padding: 0 var(--gutter); }
+  :focus-visible { outline: 2px solid var(--cpu); outline-offset: 3px; border-radius: 6px; }
+  .wrap { max-width: var(--max); margin: 0 auto; padding: 0 var(--gutter); }
 
-  h1, h2, h3 {
-    text-wrap: balance;
-    font-family: var(--display);
-    font-weight: 800;
-    text-transform: lowercase;
-    letter-spacing: -0.035em;
-    margin: 0;
-  }
-  h1 { font-size: clamp(46px, 8.2vw, 112px); line-height: 0.94; }
-  h2 { font-size: clamp(38px, 5.6vw, 72px); line-height: 0.98; }
-  h3 { font-size: 22px; line-height: 1.15; letter-spacing: -0.02em; text-transform: none; font-weight: 700; }
+  h1, h2, h3 { margin: 0; font-weight: 600; text-wrap: balance; }
+  h1 { font-size: clamp(42px, 6.4vw, 80px); line-height: 1.02; letter-spacing: -0.045em; }
+  h2 { font-size: clamp(32px, 4.2vw, 52px); line-height: 1.06; letter-spacing: -0.04em; }
+  h3 { font-size: 24px; line-height: 1.2; letter-spacing: -0.025em; }
   p { margin: 0; }
+  .sub { color: var(--fg-2); font-size: clamp(18px, 1.7vw, 20px); line-height: 1.55; }
 
-  /* ---------- The menu bar: site navigation that is also the demo ---------- */
-  .menubar {
-    position: sticky; top: 0; z-index: 20;
-    height: 52px;
-    background: var(--bar);
-    color: #F2F2F2;
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 0 clamp(8px, 2vw, 24px);
-    font: 500 17px/1 var(--text);
+  /* ---------- Nav ---------- */
+  .nav {
+    position: sticky; top: 0; z-index: 30;
+    background: var(--nav);
+    backdrop-filter: saturate(1.6) blur(18px);
+    -webkit-backdrop-filter: saturate(1.6) blur(18px);
+    border-bottom: 1px solid transparent;
+    transition: border-color 200ms;
   }
-  .menubar nav { display: flex; align-items: center; gap: 2px; min-width: 0; }
-  .menubar nav a {
-    text-decoration: none; padding: 7px 11px; border-radius: 6px; white-space: nowrap;
-  }
-  .menubar nav a:hover { background: rgba(255, 255, 255, 0.12); }
-  .menubar nav .app { font-weight: 700; display: flex; align-items: center; gap: 9px; }
-  .menubar nav .app img { width: 24px; height: 24px; }
-  .tray { display: flex; align-items: center; gap: 14px; flex: none; }
-  .tray svg { width: 24px; height: 24px; fill: #F2F2F2; flex: none; }
-  .clock { white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .nav.scrolled { border-bottom-color: var(--line); }
+  .nav .wrap { height: 60px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 600; text-decoration: none; letter-spacing: -0.01em; }
+  .brand img { width: 28px; height: 28px; }
+  .nav-links { display: flex; align-items: center; gap: 4px; font-size: 15px; }
+  .nav-links a { text-decoration: none; color: var(--fg-2); padding: 8px 12px; border-radius: 8px; }
+  .nav-links a:hover { color: var(--fg); }
+  .nav-links .btn-small { color: var(--button-fg); background: var(--button); font-weight: 500; margin-left: 8px; }
+  .nav-links .btn-small:hover { color: var(--button-fg); opacity: 0.88; }
 
-  .item {
-    position: relative;
-    height: 46px; width: 243px;
-    padding: 0; margin: 0; border: 0; border-radius: 7px;
-    background: var(--bar);
-    cursor: pointer;
-    isolation: isolate;
+  /* ---------- Buttons ---------- */
+  .actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; }
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+    height: 52px; padding: 0 24px; border-radius: 12px;
+    background: var(--button); color: var(--button-fg);
+    font: 500 17px/1 var(--sans); text-decoration: none;
   }
-  .item:hover, .item[aria-expanded="true"] { background: #3A3A3F; }
-  .item video {
-    position: absolute; inset: 1px 3px;
-    width: calc(100% - 6px); height: calc(100% - 2px);
-    mix-blend-mode: lighten;
+  .btn:hover { opacity: 0.88; }
+  .btn svg { width: 18px; height: 18px; fill: currentColor; }
+  .brew {
+    display: inline-flex; align-items: center; height: 52px; max-width: 100%;
+    border: 1px solid var(--line); background: var(--raise); border-radius: 12px; overflow: hidden;
   }
-
-  .popover {
-    position: absolute; top: 58px; right: clamp(8px, 2vw, 24px);
-    width: min(420px, calc(100vw - 16px));
-    background: #232326;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 14px;
-    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
-    overflow: hidden;
-    transform-origin: 70% 0;
-    transition: opacity 160ms ease, transform 160ms ease;
+  .brew code { font: 14px/1 var(--mono); padding: 0 6px 0 18px; white-space: nowrap; color: var(--fg); }
+  .brew code span { color: var(--fg-2); user-select: none; }
+  .brew button {
+    height: 36px; margin: 0 8px; padding: 0 12px; border: 0; border-radius: 8px;
+    background: transparent; color: var(--fg-2); font: 500 14px/1 var(--sans); cursor: pointer; min-width: 64px;
   }
-  .popover[hidden] { display: block; opacity: 0; transform: translateY(-6px) scale(0.98); pointer-events: none; visibility: hidden; }
-  .popover img { width: 100%; height: auto; }
-  .popover a {
-    display: block; padding: 12px 16px; color: #F2F2F2; text-decoration: none;
-    font: 600 15px/1.3 var(--text); border-top: 1px solid rgba(255, 255, 255, 0.08);
-  }
-  .popover a:hover { background: rgba(255, 255, 255, 0.06); }
+  .brew button:hover { background: var(--line); color: var(--fg); }
+  .fine { color: var(--fg-2); font-size: 14px; }
 
   /* ---------- Hero ---------- */
-  .hero { padding: clamp(56px, 9vw, 120px) 0 clamp(64px, 9vw, 112px); }
-  .hero h1 { max-width: 11.5ch; }
-  .lede { font-size: clamp(19px, 2vw, 22px); max-width: 34em; margin-top: 28px; }
+  .hero { padding: clamp(56px, 8vw, 104px) 0 0; text-align: center; }
+  .hero h1 { margin: 0 auto; }
+  .hero h1 span { display: inline-block; }
+  .hero .sub { max-width: 36em; margin: 22px auto 0; }
+  .hero .actions { margin-top: 34px; }
+  .hero .fine { margin-top: 16px; }
 
-  .load {
-    margin-top: 40px;
-    display: flex; flex-wrap: wrap; align-items: center; gap: 12px 18px;
+  /* The desktop: a fixed-size composition at true scale, shrunk to fit. */
+  .desk-wrap { --w: 1100px; --h: 724px; position: relative; margin: clamp(48px, 6vw, 72px) auto 0; max-width: var(--max); padding: 0 var(--gutter); }
+  .desk-frame { position: relative; height: calc(var(--h) * var(--s, 1)); }
+  .desk {
+    position: absolute; top: 0; left: 50%;
+    width: var(--w); height: var(--h);
+    transform: translateX(-50%) scale(var(--s, 1)); transform-origin: 50% 0;
+    border-radius: 22px; overflow: hidden;
+    background:
+      radial-gradient(60% 70% at 10% 6%, rgba(76, 155, 255, 0.85), transparent 62%),
+      radial-gradient(55% 65% at 94% 16%, rgba(176, 124, 255, 0.8), transparent 60%),
+      radial-gradient(50% 60% at 18% 100%, rgba(40, 200, 170, 0.7), transparent 62%),
+      radial-gradient(45% 55% at 86% 106%, rgba(255, 138, 92, 0.5), transparent 60%),
+      linear-gradient(160deg, #18213F 0%, #0E1226 100%);
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.06), 0 30px 80px -20px rgba(20, 24, 40, 0.45);
+    text-align: left;
   }
-  .load-label { font-weight: 600; }
-  .segmented {
-    display: inline-flex; padding: 4px; gap: 2px;
-    background: rgba(30, 30, 33, 0.12); border-radius: 12px;
+  .bar {
+    position: relative; height: 34px; display: flex; align-items: center; justify-content: space-between;
+    padding: 0 14px 0 18px;
+    background: rgba(10, 12, 24, 0.36);
+    color: #fff; font: 500 14px/1 -apple-system, BlinkMacSystemFont, var(--sans);
   }
-  .segmented button {
-    font: 600 16px/1 var(--text); color: var(--ink);
-    padding: 10px 14px; border: 0; border-radius: 9px; background: transparent; cursor: pointer;
-    font-variant-numeric: tabular-nums;
+  .menus { display: flex; gap: 20px; }
+  .menus b { font-weight: 700; }
+  .tray { display: flex; align-items: center; gap: 14px; }
+  .tray svg { width: 17px; height: 17px; fill: #fff; flex: none; }
+  .clock { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .item { position: relative; width: 169px; height: 32px; border-radius: 7px; background: #24273A; flex: none; }
+  .item video { position: absolute; inset: 0; width: 100%; height: 100%; mix-blend-mode: lighten; }
+  .popover {
+    position: absolute; top: 42px; width: 560px;
+    left: var(--pop-left, 470px);
+    border-radius: 16px; overflow: hidden; background: var(--ui);
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1), 0 28px 60px rgba(0, 0, 0, 0.45);
   }
-  .segmented button:hover { background: rgba(30, 30, 33, 0.08); }
-  .segmented button[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
-  .load-hint { font-size: 15px; color: rgba(30, 30, 33, 0.72); }
+  .popover img { width: 560px; height: 640px; max-width: none; }
 
-  .get { margin-top: 48px; display: flex; flex-wrap: wrap; gap: 14px; align-items: stretch; }
-  .download {
-    display: inline-flex; align-items: center; gap: 12px;
-    background: var(--ink); color: var(--paper);
-    font: 700 19px/1 var(--text); text-decoration: none;
-    padding: 18px 26px; border-radius: 14px;
+  /* Load widget: on the desktop on wide screens, below it on narrow ones. */
+  .widget {
+    position: absolute; top: calc(140px * var(--s, 1));
+    left: calc(50% - var(--w) * var(--s, 1) / 2 + 40px * var(--s, 1));
+    width: 260px; padding: 18px;
+    border-radius: 20px;
+    background: rgba(255, 255, 255, 0.14);
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    backdrop-filter: blur(24px) saturate(1.4);
+    -webkit-backdrop-filter: blur(24px) saturate(1.4);
+    color: #fff; text-align: left;
   }
-  .download:hover { background: #000; }
-  .download svg { width: 22px; height: 22px; fill: currentColor; }
-  .brew {
-    display: inline-flex; align-items: center; gap: 0;
-    border: 2px solid var(--ink); border-radius: 14px; overflow: hidden; max-width: 100%;
+  .widget h2 { font-size: 15px; letter-spacing: -0.01em; font-weight: 600; }
+  .widget p { font-size: 13px; color: rgba(255, 255, 255, 0.74); margin-top: 2px; line-height: 1.4; }
+  .loads { margin: 14px 0 0; padding: 0; list-style: none; display: grid; gap: 4px; }
+  .loads button {
+    width: 100%; display: flex; align-items: center; gap: 10px;
+    padding: 10px 12px; border: 0; border-radius: 10px;
+    background: transparent; color: #fff; font: 500 15px/1 var(--sans); text-align: left; cursor: pointer;
   }
-  .brew code {
-    font: 500 15px/1 var(--mono); padding: 0 16px; white-space: nowrap; overflow-x: auto;
-    align-self: stretch; display: flex; align-items: center;
-  }
-  .brew button {
-    font: 600 15px/1 var(--text); color: var(--ink); background: transparent;
-    border: 0; border-left: 2px solid var(--ink); padding: 0 16px; align-self: stretch; cursor: pointer; min-width: 76px;
-  }
-  .brew button:hover { background: rgba(30, 30, 33, 0.1); }
-  .fine { margin-top: 18px; font-size: 15px; color: rgba(30, 30, 33, 0.78); }
+  .loads button:hover { background: rgba(255, 255, 255, 0.1); }
+  .loads button[aria-pressed="true"] { background: rgba(255, 255, 255, 0.24); }
+  .loads .dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; flex: none; }
+  .loads .pct { margin-left: auto; font-variant-numeric: tabular-nums; color: rgba(255, 255, 255, 0.74); }
+  .loads [data-load="idle"] .dot, .loads [data-load="working"] .dot { color: #fff; }
+  .loads [data-load="busy"] .dot { color: #FA8F3D; }
+  .loads [data-load="flat"] .dot { color: #F55C5C; }
 
-  /* ---------- Ink sections ---------- */
-  .on-ink { background: var(--ink); color: #EDEDEF; }
-  .why { padding: clamp(80px, 11vw, 150px) 0; }
-  .why-grid {
-    display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr);
-    gap: clamp(40px, 6vw, 96px); align-items: start;
+  /* ---------- Sections ---------- */
+  section { padding: clamp(96px, 12vw, 152px) 0 0; }
+  .head { max-width: 44em; }
+  .head .sub { margin-top: 16px; }
+
+  .features { margin-top: clamp(48px, 6vw, 72px); display: grid; gap: clamp(72px, 9vw, 112px); }
+  .feature {
+    display: grid; grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+    gap: clamp(32px, 5vw, 72px); align-items: center;
   }
-  .why .intro { font-size: clamp(19px, 2vw, 22px); color: var(--muted-on-ink); margin-top: 24px; max-width: 30em; }
-  .facts { margin: 48px 0 0; padding: 0; list-style: none; }
-  .facts li { padding: 22px 0; border-top: 1px solid rgba(255, 255, 255, 0.12); }
-  .facts li:last-child { border-bottom: 1px solid rgba(255, 255, 255, 0.12); }
-  .facts h3 { color: #fff; }
-  .facts p { margin-top: 6px; color: var(--muted-on-ink); font-size: 17px; max-width: 34em; }
+  .feature.flip { grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr); }
+  .feature.flip .copy { order: 2; }
+  .feature.wide { grid-template-columns: 1fr; gap: 32px; }
+  .feature.wide .copy { max-width: 40em; }
+  .feature .copy p { margin-top: 12px; color: var(--fg-2); }
+  .feature .copy ul { margin: 20px 0 0; padding: 0; list-style: none; color: var(--fg-2); font-size: 16px; }
+  .feature .copy li { padding: 10px 0; border-top: 1px solid var(--line); display: flex; align-items: center; gap: 12px; }
+  .feature .copy li:last-child { border-bottom: 1px solid var(--line); }
+  .swatch { width: 10px; height: 10px; border-radius: 3px; flex: none; }
   .shot {
-    position: sticky; top: 92px;
-    border-radius: 18px; overflow: hidden;
-    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08), 0 40px 80px rgba(0, 0, 0, 0.5);
+    margin: 0; justify-self: center; width: 100%;
+    background: var(--ui); border-radius: 18px; overflow: hidden;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08), 0 24px 60px -24px rgba(20, 24, 40, 0.4);
+  }
+  .shot img { width: 100%; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .shot, :root:not([data-theme="light"]) .tile { box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08); }
   }
 
-  .film { padding: 0 0 clamp(80px, 11vw, 150px); }
-  .film h2 { margin-bottom: 28px; }
-  .film video { width: 100%; height: auto; aspect-ratio: 16 / 9; border-radius: 18px; background: #000; }
+  .more { margin: clamp(72px, 9vw, 104px) 0 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0 32px; }
+  .more li { padding: 18px 0 22px; border-top: 1px solid var(--line); }
+  .more strong { display: block; font-weight: 600; }
+  .more span { color: var(--fg-2); font-size: 15px; }
 
-  /* ---------- Paper sections ---------- */
-  .on-paper { background: var(--surface); color: var(--on-surface); }
-  .rexes { padding: clamp(80px, 11vw, 150px) 0; }
-  .rexes .intro { margin-top: 20px; max-width: 36em; color: var(--muted); font-size: 19px; }
-  .gallery {
-    margin: 56px 0 0; padding: 0; list-style: none;
-    display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 40px 28px;
+  .gallery { margin: clamp(40px, 5vw, 56px) 0 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 32px 20px; }
+  .tile { background: var(--ui); border-radius: 16px; aspect-ratio: 216 / 132; overflow: hidden; }
+  .tile video { width: 100%; height: 100%; mix-blend-mode: lighten; }
+  .gallery h3 { font-size: 17px; letter-spacing: -0.01em; margin-top: 12px; }
+  .gallery p { font-size: 14px; color: var(--fg-2); line-height: 1.45; margin-top: 2px; }
+
+  .film video { margin-top: clamp(32px, 4vw, 48px); width: 100%; aspect-ratio: 16 / 9; border-radius: 18px; background: #000; }
+
+  .facts { margin: clamp(40px, 5vw, 56px) 0 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 32px; }
+  .facts li { padding-top: 20px; border-top: 2px solid var(--fg); }
+  .facts h3 { font-size: 20px; }
+  .facts p { margin-top: 8px; color: var(--fg-2); font-size: 16px; }
+  details { margin-top: 48px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+  summary { cursor: pointer; padding: 18px 0; font-weight: 500; list-style: none; display: flex; justify-content: space-between; }
+  summary::-webkit-details-marker { display: none; }
+  summary::after { content: "+"; color: var(--fg-2); font-size: 22px; line-height: 1; }
+  details[open] summary::after { content: "−"; }
+  table { width: 100%; border-collapse: collapse; font-size: 15px; margin-bottom: 18px; }
+  th, td { text-align: left; vertical-align: top; padding: 12px 0; border-top: 1px solid var(--line); }
+  th { font-weight: 500; width: 36%; padding-right: 24px; }
+  td { color: var(--fg-2); }
+  td code { font: 13.5px/1.5 var(--mono); }
+
+  .cta { text-align: center; padding-bottom: clamp(96px, 12vw, 152px); }
+  .cta .sub { margin: 16px auto 0; max-width: 32em; }
+  .cta .actions { margin-top: 32px; }
+  .cta .fine { margin-top: 16px; }
+
+  footer { border-top: 1px solid var(--line); padding: 28px 0 40px; font-size: 14px; color: var(--fg-2); }
+  footer .wrap { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px 24px; }
+  footer nav { display: flex; gap: 20px; }
+  footer a { text-decoration: none; }
+  footer a:hover { color: var(--fg); }
+
+  /* ---------- Narrow screens ---------- */
+  @media (max-width: 900px) {
+    .feature, .feature.flip { grid-template-columns: 1fr; }
+    .feature.flip .copy { order: 0; }
+    .more { grid-template-columns: 1fr 1fr; }
+    .gallery { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px 16px; }
+    .facts { grid-template-columns: 1fr; gap: 24px; }
   }
-  .gallery .tile { background: var(--tile); border-radius: 14px; aspect-ratio: 216 / 132; display: grid; place-items: center; }
-  .gallery video { width: 100%; height: 100%; mix-blend-mode: lighten; }
-  .gallery h3 { margin-top: 14px; }
-  .gallery p { margin-top: 4px; font-size: 15px; line-height: 1.45; color: var(--muted); }
-
-  .trust { padding: 0 0 clamp(80px, 11vw, 150px); }
-  .trust-grid { display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); gap: clamp(40px, 6vw, 96px); }
-  .trust .intro { margin-top: 24px; color: var(--muted); font-size: 19px; max-width: 30em; }
-  .trust .cost { margin-top: 28px; font-size: 17px; max-width: 30em; }
-  .trust .cost strong { font-variant-numeric: tabular-nums; }
-  table { width: 100%; border-collapse: collapse; font-size: 16px; }
-  th, td { text-align: left; vertical-align: top; padding: 13px 0; border-bottom: 1px solid var(--line); }
-  th { font-weight: 600; width: 38%; padding-right: 20px; }
-  td code { font: 14px/1.5 var(--mono); color: var(--muted); }
-  caption { text-align: left; font-weight: 600; padding-bottom: 10px; color: var(--muted); font-size: 15px; }
-
-  /* ---------- Install ---------- */
-  .install { padding: clamp(80px, 11vw, 140px) 0; }
-  .steps { margin: 40px 0 0; padding: 0; list-style: none; counter-reset: step; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 32px; }
-  .steps li { counter-increment: step; }
-  .steps li::before {
-    content: counter(step);
-    display: block; font: 800 64px/1 var(--display); letter-spacing: -0.04em; margin-bottom: 12px;
+  @media (max-width: 760px) {
+    .nav-links a:not(.btn-small) { display: none; }
+    .desk-wrap { --w: 640px; }
+    .menus { display: none; }
+    .bar { justify-content: flex-end; }
+    .widget {
+      position: static; width: auto; margin: 16px 0 0;
+      background: var(--raise); border-color: var(--line); color: var(--fg);
+      backdrop-filter: none; -webkit-backdrop-filter: none;
+    }
+    .widget p, .loads .pct { color: var(--fg-2); }
+    .loads { grid-template-columns: 1fr 1fr; }
+    .loads button { color: var(--fg); }
+    .loads button:hover { background: var(--line); }
+    .loads button[aria-pressed="true"] { background: var(--button); color: var(--button-fg); }
+    .loads button[aria-pressed="true"] .pct { color: inherit; opacity: 0.75; }
+    .loads [data-load="idle"] .dot, .loads [data-load="working"] .dot { color: var(--fg-2); }
   }
-  .steps p { max-width: 22em; }
-  .install .get { margin-top: 48px; }
-
-  footer { padding: 40px 0 56px; font-size: 15px; }
-  footer .wrap { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 16px; color: var(--muted-on-ink); }
-  footer a { color: #EDEDEF; }
-
-  /* ---------- Small screens ---------- */
-  @media (max-width: 980px) {
-    .menubar nav a:not(.app):not(.gh) { display: none; }
-    .why-grid, .trust-grid { grid-template-columns: 1fr; }
-    .shot { position: static; max-width: 560px; }
-    .gallery { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 32px 18px; }
-    .steps { grid-template-columns: 1fr; gap: 24px; }
-  }
-  @media (max-width: 600px) {
-    html { scroll-padding-top: 52px; }
-    .menubar { height: 44px; font-size: 15px; }
-    .menubar nav .gh, .tray svg { display: none; }
-    .menubar nav .app span { display: none; }
-    .item { height: 38px; width: 200px; }
-    .tray { gap: 8px; }
-    .popover { top: 50px; }
-    .brew code { font-size: 13px; padding: 12px; }
-    .download { width: 100%; justify-content: center; }
-    .brew { width: 100%; }
-    .brew code { flex: 1; min-width: 0; white-space: normal; overflow-wrap: anywhere; line-height: 1.4; }
+  @media (max-width: 560px) {
+    .brew { width: 100%; height: auto; min-height: 52px; }
+    .brew code { flex: 1; min-width: 0; padding: 12px 4px 12px 14px; font-size: 13px; line-height: 1.45; white-space: normal; overflow-wrap: anywhere; text-align: left; }
+    .btn { width: 100%; }
+    .more { grid-template-columns: 1fr; }
     .gallery p { display: none; }
     th { width: 44%; }
-  }
-  @media (max-width: 380px) {
-    .clock { display: none; }
   }
 </style>
 </head>
 <body>
 
-<header class="menubar" id="top">
-  <nav aria-label="Site">
-    <a class="app" href="#top"><img src="site/icon-64.png" alt="" width="24" height="24"><span>Rex Boing</span></a>
-    <a href="#why">Dashboard</a>
-    <a href="#rexes">Rexes</a>
-    <a href="#film">Film</a>
-    <a href="#install">Install</a>
-    <a class="gh" href="https://github.com/rexyrex/Rex-Boing">GitHub</a>
-  </nav>
-  <div class="tray">
-    <button class="item" id="item" aria-expanded="false" aria-controls="popover" aria-label="Rex Boing menu bar item. Open the dashboard preview.">
-      <video id="loop" src="site/load-idle.mp4" muted loop playsinline autoplay preload="auto" aria-hidden="true"></video>
-    </button>
-    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 18.6a1.7 1.7 0 1 1 0 3.4 1.7 1.7 0 0 1 0-3.4Zm0-5.1c1.9 0 3.6.7 4.9 1.9l-1.5 1.6A4.9 4.9 0 0 0 12 15.7c-1.3 0-2.5.5-3.4 1.3l-1.5-1.6A7.1 7.1 0 0 1 12 13.5Zm0-5c3.2 0 6.1 1.2 8.3 3.3l-1.5 1.6A9.7 9.7 0 0 0 12 10.7c-2.6 0-5 1-6.8 2.6l-1.5-1.6A11.9 11.9 0 0 1 12 8.5Zm0-5c4.5 0 8.6 1.7 11.6 4.6l-1.5 1.6A14.5 14.5 0 0 0 12 5.7c-3.9 0-7.5 1.5-10.1 4L.4 8.1A16.7 16.7 0 0 1 12 3.5Z"/></svg>
-    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 7h15A2.5 2.5 0 0 1 21 9.5v5a2.5 2.5 0 0 1-2.5 2.5h-15A2.5 2.5 0 0 1 1 14.5v-5A2.5 2.5 0 0 1 3.5 7Zm0 1.4c-.6 0-1.1.5-1.1 1.1v5c0 .6.5 1.1 1.1 1.1h15c.6 0 1.1-.5 1.1-1.1v-5c0-.6-.5-1.1-1.1-1.1h-15ZM4 10h11.5v4H4v-4Zm18 .7c.6.2 1 .7 1 1.3s-.4 1.1-1 1.3v-2.6Z"/></svg>
-    <span class="clock" id="clock">Mon 9:41</span>
-  </div>
-  <div class="popover on-ink" id="popover" hidden>
-    <img src="dashboard.png" alt="The Rex Boing dashboard: processor, graphics, memory and thermals cards with history graphs, and a top processes list ranked by CPU, memory, GPU, energy or disk." width="1120" height="1280" loading="lazy">
-    <a href="#why">See everything the dashboard shows</a>
+<header class="nav" id="nav">
+  <div class="wrap">
+    <a class="brand" href="#top"><img src="site/icon-64.png" alt="" width="28" height="28">Rex Boing</a>
+    <nav class="nav-links" aria-label="Site">
+      <a href="#features">Features</a>
+      <a href="#rexes">Rexes</a>
+      <a href="#tour">Tour</a>
+      <a href="https://github.com/rexyrex/Rex-Boing">GitHub</a>
+      <a class="btn-small" href="#download">Download</a>
+    </nav>
   </div>
 </header>
 
-<main>
-  <section class="hero">
+<main id="top">
+  <div class="hero">
     <div class="wrap">
-      <h1>a tiny t-rex lives in your menu bar.</h1>
-      <p class="lede">It runs faster as your Mac works harder. Click it and it tells you why: which app is on the CPU, the GPU, the disk and the battery, how many watts the whole machine is drawing, and what is keeping it awake.</p>
-
-      <div class="load" role="group" aria-labelledby="load-label">
-        <span class="load-label" id="load-label">How busy is your Mac?</span>
-        <div class="segmented">
-          <button type="button" data-load="idle" aria-pressed="true">Idle 8%</button>
-          <button type="button" data-load="working" aria-pressed="false">Working 45%</button>
-          <button type="button" data-load="busy" aria-pressed="false">Busy 78%</button>
-          <button type="button" data-load="flat" aria-pressed="false">Flat out 100%</button>
-        </div>
-        <span class="load-hint">Watch the rex in the menu bar, then click it.</span>
-      </div>
-
-      <div class="get">
-        <a class="download" href="https://github.com/rexyrex/Rex-Boing/releases/latest/download/Rex.Boing.zip">
+      <h1><span>Your Mac is busy.</span> <span>Rex Boing shows you why.</span></h1>
+      <p class="sub">A tiny T-rex runs in your menu bar and speeds up as your Mac works harder. Click it to see which app is using the CPU, GPU, disk and battery, how many watts your Mac is drawing, and what is keeping it awake.</p>
+      <div class="actions">
+        <a class="btn" href="https://github.com/rexyrex/Rex-Boing/releases/latest/download/Rex.Boing.zip">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 3h2v10.2l3.6-3.6 1.4 1.4-6 6-6-6 1.4-1.4 3.6 3.6V3Zm-7 15h16v2H4v-2Z"/></svg>
           Download for macOS
         </a>
         <div class="brew">
-          <code>brew install --cask rexyrex/tap/rex-boing</code>
+          <code><span>$ </span>brew install --cask rexyrex/tap/rex-boing</code>
           <button type="button" class="copy" data-copy="brew install --cask rexyrex/tap/rex-boing">Copy</button>
         </div>
       </div>
-      <p class="fine">Free and open source under the MIT license. Signed and notarized. macOS 14 Sonoma or later; every reading on Apple silicon, most on Intel.</p>
+      <p class="fine">Free and open source. Signed and notarized. macOS 14 or later.</p>
     </div>
-  </section>
 
-  <section class="why on-ink" id="why">
-    <div class="wrap why-grid">
-      <div>
-        <h2>click it.</h2>
-        <p class="intro">A menu bar pet tells you that your Mac is busy. The dashboard behind the rex tells you what is making it busy, and what it was two minutes ago.</p>
-        <ul class="facts">
-          <li>
-            <h3>Which app is using the GPU</h3>
-            <p>Top processes ranked by CPU, memory, GPU, energy or disk, live or over the last 5 minutes to 24 hours, with helper processes folded into the app they belong to.</p>
-          </li>
-          <li>
-            <h3>What was that spike?</h3>
-            <p>Click any graph to open the instant under the pointer: every process that ranked at that moment, all five measures side by side, plus wakeups a second. Arrow keys walk through time.</p>
-          </li>
-          <li>
-            <h3>Who is keeping your Mac awake</h3>
-            <p>Every process holding a display or system sleep assertion, with the reason it gave.</p>
-          </li>
-          <li>
-            <h3>Real watts</h3>
-            <p>Whole-machine power from the SMC, so fans, display and SSD count, plus CPU, GPU, Neural Engine and SoC figures, battery health and cycle count.</p>
-          </li>
-          <li>
-            <h3>Every sensor</h3>
-            <p>CPU and GPU temperatures, fan speeds against their range, thermal pressure, and every individual sensor grouped by subsystem: 186 of them on an M1 Pro.</p>
-          </li>
+    <div class="desk-wrap" id="desk-wrap">
+      <div class="desk-frame">
+        <div class="desk" id="desk" role="img" aria-label="A Mac desktop. In the menu bar, the Rex Boing item shows a running T-rex with CPU and memory readouts. Below it, the Rex Boing dashboard is open, showing processor, graphics, memory and thermals cards and the top processes list.">
+          <div class="bar">
+            <div class="menus"><b>Finder</b><span>File</span><span>Edit</span><span>View</span><span>Go</span><span>Window</span><span>Help</span></div>
+            <div class="tray">
+              <div class="item" id="item"><video id="loop" src="site/load-idle.mp4" muted loop playsinline autoplay preload="auto"></video></div>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 18.6a1.7 1.7 0 1 1 0 3.4 1.7 1.7 0 0 1 0-3.4Zm0-5.1c1.9 0 3.6.7 4.9 1.9l-1.5 1.6A4.9 4.9 0 0 0 12 15.7c-1.3 0-2.5.5-3.4 1.3l-1.5-1.6A7.1 7.1 0 0 1 12 13.5Zm0-5c3.2 0 6.1 1.2 8.3 3.3l-1.5 1.6A9.7 9.7 0 0 0 12 10.7c-2.6 0-5 1-6.8 2.6l-1.5-1.6A11.9 11.9 0 0 1 12 8.5Zm0-5c4.5 0 8.6 1.7 11.6 4.6l-1.5 1.6A14.5 14.5 0 0 0 12 5.7c-3.9 0-7.5 1.5-10.1 4L.4 8.1A16.7 16.7 0 0 1 12 3.5Z"/></svg>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 7h15A2.5 2.5 0 0 1 21 9.5v5a2.5 2.5 0 0 1-2.5 2.5h-15A2.5 2.5 0 0 1 1 14.5v-5A2.5 2.5 0 0 1 3.5 7Zm0 1.4c-.6 0-1.1.5-1.1 1.1v5c0 .6.5 1.1 1.1 1.1h15c.6 0 1.1-.5 1.1-1.1v-5c0-.6-.5-1.1-1.1-1.1h-15ZM4 10h11.5v4H4v-4Zm18 .7c.6.2 1 .7 1 1.3s-.4 1.1-1 1.3v-2.6Z"/></svg>
+              <span class="clock" id="clock">Mon 9:41</span>
+            </div>
+          </div>
+          <div class="popover" id="popover">
+            <img src="site/ui-dashboard.png" alt="" width="560" height="640">
+          </div>
+        </div>
+      </div>
+      <div class="widget" role="group" aria-labelledby="widget-title">
+        <h2 id="widget-title">Simulate load</h2>
+        <p>Watch the rex in the menu bar.</p>
+        <ul class="loads">
+          <li><button type="button" data-load="idle" aria-pressed="true"><span class="dot"></span>Idle<span class="pct">8%</span></button></li>
+          <li><button type="button" data-load="working" aria-pressed="false"><span class="dot"></span>Working<span class="pct">45%</span></button></li>
+          <li><button type="button" data-load="busy" aria-pressed="false"><span class="dot"></span>Busy<span class="pct">78%</span></button></li>
+          <li><button type="button" data-load="flat" aria-pressed="false"><span class="dot"></span>Flat out<span class="pct">100%</span></button></li>
         </ul>
       </div>
-      <div class="shot">
-        <img src="dashboard.png" alt="The Rex Boing dashboard showing processor, graphics, memory and thermals cards and a ranked top processes list." width="1120" height="1280" loading="lazy">
+    </div>
+  </div>
+
+  <section id="features">
+    <div class="wrap">
+      <div class="head">
+        <h2>Everything behind the rex</h2>
+        <p class="sub">A menu bar pet can tell you that your Mac is busy. Click this one for the reason.</p>
       </div>
+
+      <div class="features">
+        <div class="feature">
+          <div class="copy">
+            <h3>See which app is using what</h3>
+            <p>Top processes ranked by any resource, with helper processes folded into the app they belong to.</p>
+            <ul>
+              <li><span class="swatch" style="background: var(--cpu)"></span>CPU, memory, GPU, energy and disk</li>
+              <li><span class="swatch" style="background: var(--gpu)"></span>Per-app GPU use, which most monitors leave out</li>
+              <li><span class="swatch" style="background: var(--mem)"></span>Live, or over the last 5 minutes to 24 hours</li>
+            </ul>
+          </div>
+          <figure class="shot" style="max-width: 542px">
+            <img src="site/ui-processes.png" width="1084" height="568" alt="The top processes card, with tabs for CPU, memory, GPU, energy and disk, and time ranges from live to 24 hours." loading="lazy">
+          </figure>
+        </div>
+
+        <div class="feature wide">
+          <div class="copy">
+            <h3>Click any graph to see what caused a spike</h3>
+            <p>A window opens on the moment under the pointer and lists every process that ranked then, with CPU, GPU, memory, disk, energy and wakeups side by side. Arrow keys step through time.</p>
+          </div>
+          <figure class="shot" style="max-width: 900px; justify-self: start">
+            <img src="site/ui-breakdown.png" width="1800" height="858" alt="The process breakdown window at a CPU spike of 100%, with a timeline scrubber and a table of processes by CPU, GPU, memory, disk, energy and wakeups." loading="lazy">
+          </figure>
+        </div>
+
+        <div class="feature flip">
+          <div class="copy">
+            <h3>Real watts, and who is keeping your Mac awake</h3>
+            <p>Whole-machine power from the SMC, so the fans, display and SSD count, alongside GPU and DC-in power, battery charge and cycle count. Every app holding off sleep is named, with the reason it gave.</p>
+          </div>
+          <figure class="shot" style="max-width: 542px">
+            <img src="site/ui-power.png" width="1084" height="486" alt="The power card: total draw with a history graph, GPU power, DC-in, battery charge and cycle count, and the apps keeping the Mac awake." loading="lazy">
+          </figure>
+        </div>
+      </div>
+
+      <ul class="more">
+        <li><strong>Every core</strong><span>Per-core load split into efficiency and performance clusters, with live clock speeds.</span></li>
+        <li><strong>Every sensor</strong><span>CPU, GPU and battery temperatures, fans, and all 186 sensors on an M1 Pro.</span></li>
+        <li><strong>Memory pressure and swap</strong><span>App, wired and compressed memory, swap use and page-in rates.</span></li>
+        <li><strong>Network and disk</strong><span>Throughput with history and session totals.</span></li>
+        <li><strong>Menu bar readouts</strong><span>Any mix of CPU, GPU, memory, temperature, power, network, disk and battery.</span></li>
+        <li><strong>Light on your Mac</strong><span>About 1.4% of one core at the default settings.</span></li>
+      </ul>
     </div>
   </section>
 
-  <section class="film on-ink" id="film">
+  <section id="rexes">
     <div class="wrap">
-      <h2>the 60-second tour.</h2>
+      <div class="head">
+        <h2>Sixteen rexes to choose from</h2>
+        <p class="sub">Each one speeds up with load, turns orange past 70% and red at 100%, and does something bigger past two-thirds. All of them are drawn in code.</p>
+      </div>
+      <ul class="gallery" id="gallery"></ul>
+    </div>
+  </section>
+
+  <section id="tour" class="film">
+    <div class="wrap">
+      <div class="head">
+        <h2>The 60-second tour</h2>
+      </div>
       <video controls preload="none" playsinline poster="site/promo-poster.jpg" width="1600" height="900">
         <source src="site/promo.mp4" type="video/mp4">
       </video>
     </div>
   </section>
 
-  <section class="rexes on-paper" id="rexes">
+  <section id="privacy">
     <div class="wrap">
-      <h2>sixteen rexes.</h2>
-      <p class="intro">Pick one in Settings. Each speeds up with load, turns orange past 70% and red at 100%, and does something bigger past two-thirds. Every frame is drawn by code, not sprites.</p>
-      <ul class="gallery" id="gallery"></ul>
-    </div>
-  </section>
-
-  <section class="trust on-paper" id="trust">
-    <div class="wrap trust-grid">
-      <div>
-        <h2>no helper. no sudo. no network.</h2>
-        <p class="intro">Everything is read through unprivileged system APIs. There is nothing to install alongside it, no password prompt, and the app never opens a network connection.</p>
-        <p class="cost">At the default settings it costs about <strong>1.4% of one core</strong>, measured on an M1 Pro with every core busy and the rex at full speed.</p>
+      <div class="head">
+        <h2>Nothing running but the app</h2>
+        <p class="sub">Rex Boing is MIT-licensed and reads everything through unprivileged system APIs.</p>
       </div>
-      <table>
-        <caption>Where the numbers come from</caption>
-        <tbody>
-          <tr><th scope="row">CPU, per core</th><td><code>host_processor_info</code></td></tr>
-          <tr><th scope="row">Memory and swap</th><td><code>host_statistics64</code>, <code>vm.swapusage</code></td></tr>
-          <tr><th scope="row">GPU use, per app</th><td><code>IOAccelerator</code> statistics and accelerator clients in the IORegistry</td></tr>
-          <tr><th scope="row">Temperatures, fans, system power</th><td>AppleSMC user client</td></tr>
-          <tr><th scope="row">Component power and clocks</th><td><code>IOReport</code> energy counters</td></tr>
-          <tr><th scope="row">Per-app CPU, memory, energy, disk</th><td><code>libproc</code>: <code>proc_pidinfo</code>, <code>proc_pid_rusage</code></td></tr>
-          <tr><th scope="row">Sleep assertions</th><td><code>IOPMCopyAssertionsByProcess</code></td></tr>
-        </tbody>
-      </table>
+      <ul class="facts">
+        <li><h3>No helper, no sudo</h3><p>Nothing installs alongside it, and it never asks for your password.</p></li>
+        <li><h3>No network connections</h3><p>Your numbers stay on your Mac. The app makes no connections at all.</p></li>
+        <li><h3>No permission prompts</h3><p>It asks for no permissions. Settings lists which data sources work on your Mac.</p></li>
+      </ul>
+      <details>
+        <summary>Where the numbers come from</summary>
+        <table>
+          <tbody>
+            <tr><th scope="row">CPU, per core</th><td><code>host_processor_info</code></td></tr>
+            <tr><th scope="row">Memory and swap</th><td><code>host_statistics64</code>, <code>vm.swapusage</code></td></tr>
+            <tr><th scope="row">GPU use, per app</th><td><code>IOAccelerator</code> statistics and accelerator clients in the IORegistry</td></tr>
+            <tr><th scope="row">Temperatures, fans, system power</th><td>AppleSMC user client</td></tr>
+            <tr><th scope="row">Component power and clocks</th><td><code>IOReport</code> energy counters</td></tr>
+            <tr><th scope="row">Per-app CPU, memory, energy, disk</th><td><code>proc_pidinfo</code>, <code>proc_pid_rusage</code></td></tr>
+            <tr><th scope="row">Sleep assertions</th><td><code>IOPMCopyAssertionsByProcess</code></td></tr>
+          </tbody>
+        </table>
+      </details>
     </div>
   </section>
 
-  <section class="install" id="install">
+  <section id="download" class="cta">
     <div class="wrap">
-      <h2>get the rex.</h2>
-      <ol class="steps">
-        <li><h3>Download</h3><p>Get the notarized zip from GitHub Releases and unzip it.</p></li>
-        <li><h3>Move it to Applications</h3><p>Drag Rex Boing into Applications and open it. It asks for no permissions.</p></li>
-        <li><h3>Click the rex</h3><p>Click for the dashboard, right-click for the rex gallery and settings. Turn on Launch at login to keep it.</p></li>
-      </ol>
-      <div class="get">
-        <a class="download" href="https://github.com/rexyrex/Rex-Boing/releases/latest/download/Rex.Boing.zip">
+      <h2>Put a rex in your menu bar</h2>
+      <p class="sub">Download the app, drag it to Applications and open it. Click the rex for the dashboard; right-click it for settings and the rex gallery.</p>
+      <div class="actions">
+        <a class="btn" href="https://github.com/rexyrex/Rex-Boing/releases/latest/download/Rex.Boing.zip">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 3h2v10.2l3.6-3.6 1.4 1.4-6 6-6-6 1.4-1.4 3.6 3.6V3Zm-7 15h16v2H4v-2Z"/></svg>
           Download for macOS
         </a>
         <div class="brew">
-          <code>brew install --cask rexyrex/tap/rex-boing</code>
+          <code><span>$ </span>brew install --cask rexyrex/tap/rex-boing</code>
           <button type="button" class="copy" data-copy="brew install --cask rexyrex/tap/rex-boing">Copy</button>
         </div>
       </div>
-      <p class="fine">Prefer to build it yourself? Clone the repository and run <code>./build.sh --install</code> with Xcode 26 and XcodeGen.</p>
+      <p class="fine">Requires macOS 14 Sonoma or later. Every reading on Apple silicon, most on Intel.</p>
     </div>
   </section>
 </main>
 
-<footer class="on-ink">
+<footer>
   <div class="wrap">
     <span>Rex Boing is free and open source under the MIT license. Made by <a href="https://github.com/rexyrex">rexyrex</a>.</span>
-    <span><a href="https://github.com/rexyrex/Rex-Boing">Source</a> &nbsp; <a href="https://github.com/rexyrex/Rex-Boing/releases">Releases</a> &nbsp; <a href="https://github.com/rexyrex/Rex-Boing/issues">Report a bug</a></span>
+    <nav aria-label="Project">
+      <a href="https://github.com/rexyrex/Rex-Boing">Source</a>
+      <a href="https://github.com/rexyrex/Rex-Boing/releases">Releases</a>
+      <a href="https://github.com/rexyrex/Rex-Boing/issues">Report a bug</a>
+    </nav>
   </div>
 </footer>
 
@@ -439,27 +507,45 @@
 (() => {
   const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-  // Menu bar clock, in the visitor's own locale, the way macOS shows it.
+  // Nav hairline once the page scrolls.
+  const nav = document.getElementById('nav');
+  const onScroll = () => nav.classList.toggle('scrolled', scrollY > 8);
+  addEventListener('scroll', onScroll, { passive: true }); onScroll();
+
+  // The desktop is laid out at true size, then scaled to the column. The
+  // popover hangs centred under the rex, as a status item popover does.
+  const wrap = document.getElementById('desk-wrap');
+  const desk = document.getElementById('desk');
+  const item = document.getElementById('item');
+  const pop = document.getElementById('popover');
+  const fit = () => {
+    const pad = parseFloat(getComputedStyle(wrap).paddingLeft) * 2;
+    const s = Math.min(1, (wrap.clientWidth - pad) / desk.offsetWidth);
+    wrap.style.setProperty('--s', s.toFixed(4));
+    const centre = item.offsetLeft + item.offsetWidth / 2 + item.offsetParent.offsetLeft;
+    const left = Math.max(16, Math.min(desk.offsetWidth - 560 - 16, centre - 280));
+    desk.style.setProperty('--pop-left', `${left}px`);
+  };
+  new ResizeObserver(fit).observe(wrap); fit();
+  if (document.fonts) document.fonts.ready.then(fit);
+
+  // Menu bar clock in the visitor's own locale.
   const clock = document.getElementById('clock');
   const fmt = new Intl.DateTimeFormat(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' });
-  const tick = () => { clock.textContent = fmt.format(new Date()).replace(',', ''); };
+  const tick = () => { clock.textContent = fmt.format(new Date()).replace(',', ''); fit(); };
   tick(); setInterval(tick, 15000);
 
-  // Load demo: four pre-rendered loops of the real status item, swapped on
-  // one <video> (browsers stop painting videos that start out hidden).
+  // Load demo: four pre-rendered loops of the real status item, swapped on one
+  // <video> (browsers stop painting videos that start out hidden).
   const loop = document.getElementById('loop');
-  const buttons = [...document.querySelectorAll('.segmented button')];
+  const buttons = [...document.querySelectorAll('.loads button')];
   const order = ['idle', 'working', 'busy', 'flat'];
   const urls = Object.fromEntries(order.map((l) => [l, `site/load-${l}.mp4`]));
-  let current = 'idle', auto = !reduce, timer = null;
-  // Fetch the other loops up front so a switch never waits on the network.
   for (const l of order) {
-    fetch(urls[l]).then((r) => r.blob()).then((b) => {
-      urls[l] = URL.createObjectURL(b);
-    }).catch(() => {});
+    fetch(urls[l]).then((r) => r.blob()).then((b) => { urls[l] = URL.createObjectURL(b); }).catch(() => {});
   }
+  let current = 'idle', auto = !reduce, timer = null;
   if (reduce) { loop.removeAttribute('autoplay'); loop.pause(); }
-
   function show(load) {
     current = load;
     loop.src = urls[load];
@@ -476,15 +562,6 @@
   for (const b of buttons) b.addEventListener('click', () => { auto = false; clearTimeout(timer); show(b.dataset.load); });
   if (auto) cycle();
 
-  // Clicking the rex opens a dashboard preview, like the app does.
-  const item = document.getElementById('item');
-  const pop = document.getElementById('popover');
-  const setOpen = (open) => { pop.hidden = !open; item.setAttribute('aria-expanded', String(open)); };
-  item.addEventListener('click', (e) => { e.stopPropagation(); setOpen(pop.hidden); });
-  pop.addEventListener('click', (e) => { if (e.target.closest('a')) setOpen(false); e.stopPropagation(); });
-  document.addEventListener('click', () => setOpen(false));
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !pop.hidden) { setOpen(false); item.focus(); } });
-
   // Copy buttons.
   for (const btn of document.querySelectorAll('.copy')) {
     btn.addEventListener('click', async () => {
@@ -499,29 +576,29 @@
     });
   }
 
-  // Gallery: the sixteen characters, straight from the app's own descriptions.
+  // Gallery: the sixteen characters, from the app's own descriptions.
   const rexes = [
-    ['rex', 'Rex', 'A gallop. A lazy trot at rest; a flat-out, worried sprint under load.'],
-    ['disco', 'Disco', 'Pointing up on the beat, down on the off-beat. The tempo is the machine’s.'],
-    ['boing', 'Boing', 'Jumping around, higher and faster with load. Backflips past two-thirds.'],
+    ['rex', 'Rex', 'A lazy trot at rest; a flat-out, worried sprint under load.'],
+    ['disco', 'Disco', 'Pointing up on the beat, down on the off-beat.'],
+    ['boing', 'Boing', 'Jumping higher with load. Backflips past two-thirds.'],
     ['dash', 'Dash', 'The zoomies: full-width sprints, skidding into the turns.'],
-    ['stomp', 'Stomp', 'Gone kaiju. Every footfall lands a shockwave; past two-thirds it roars.'],
-    ['chomp', 'Chomp', 'Chasing a fly, leaping and snapping. The fly gets bolder with load.'],
-    ['roll', 'Roll', 'Revving up and rolling across the bar as a ball. Harder launch with load.'],
-    ['rocket', 'Rocket', 'On a jetpack it should not have. Barrel rolls past two-thirds.'],
-    ['skip', 'Skip', 'Skipping rope, the rope whipping right round every hop. Double-unders under load.'],
-    ['bungee', 'Bungee', 'On a bungee cord, booping the floor with its nose on every bounce.'],
-    ['achoo', 'Achoo', 'Winding up a sneeze. Under load it skids the rex backwards, then flips it.'],
-    ['shred', 'Shred', 'Push, ollie, kick-turn. Past two-thirds the ollie spins the deck a whole turn.'],
-    ['dragon', 'Dragon', 'Wings: a long glide, one hard downstroke. Under load, a fire run.'],
-    ['ninja', 'Ninja', 'Wind up, lunge, strike. Past two-thirds, a whirlwind slash.'],
-    ['surf', 'Surf', 'Riding a swell. Bigger waves with load, and an air with a full rotation.'],
-    ['lift', 'Lift', 'Press, hold, squat, drive. The plates grow with load, and so does the wobble.'],
+    ['stomp', 'Stomp', 'Gone kaiju. Every footfall lands a shockwave.'],
+    ['chomp', 'Chomp', 'Chasing a fly that gets bolder with load.'],
+    ['roll', 'Roll', 'Revving up and rolling across the bar as a ball.'],
+    ['rocket', 'Rocket', 'On a jetpack. Barrel rolls past two-thirds.'],
+    ['skip', 'Skip', 'Skipping rope. Double-unders under load.'],
+    ['bungee', 'Bungee', 'Booping the floor with its nose on every bounce.'],
+    ['achoo', 'Achoo', 'A sneeze big enough to flip it at full load.'],
+    ['shred', 'Shred', 'Push, ollie, kick-turn. The deck spins under load.'],
+    ['dragon', 'Dragon', 'A long glide that turns into a fire run.'],
+    ['ninja', 'Ninja', 'Wind up, lunge, strike. Then a whirlwind slash.'],
+    ['surf', 'Surf', 'Bigger waves with load, and an air with a full turn.'],
+    ['lift', 'Lift', 'Press, squat, drive. The plates grow with load.'],
   ];
   const gallery = document.getElementById('gallery');
   for (const [id, name, detail] of rexes) {
     const li = document.createElement('li');
-    li.innerHTML = `<div class="tile"><video src="site/rex/${id}.mp4" muted loop playsinline preload="${reduce ? 'auto' : 'none'}" aria-hidden="true"></video></div><h3>${name}</h3><p>${detail}</p>`;
+    li.innerHTML = `<div class="tile"><video src="site/rex/${id}.mp4" poster="site/rex/${id}.jpg" muted loop playsinline preload="${reduce ? 'auto' : 'none'}" aria-hidden="true"></video></div><h3>${name}</h3><p>${detail}</p>`;
     gallery.append(li);
   }
   if (!reduce && 'IntersectionObserver' in window) {
