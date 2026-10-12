@@ -1,9 +1,9 @@
 import SwiftUI
 import AppKit
 
-/// Time frames the usage card can rank over. Bounded above by the ledger's
-/// retention — a day — and below by a span long enough that accumulated work
-/// says something the live table does not.
+/// Time frames the process card can rank over besides Live. Bounded above by
+/// the ledger's retention — a day — and below by a span long enough that
+/// accumulated work says something the live rows do not.
 enum UsageWindow: Double, CaseIterable, Identifiable {
     case fiveMinutes = 300
     case twentyMinutes = 1200
@@ -35,84 +35,46 @@ enum UsageWindow: Double, CaseIterable, Identifiable {
 }
 
 /// Which apps used the most over a chosen window — the retrospective answer
-/// the live process table cannot give, drawn from the usage ledger.
+/// the live table cannot give, drawn from the usage ledger. The process card
+/// shows this in place of its live rows whenever a window is picked.
 ///
 /// Work is shown as totals and window-averages: real joules, core-time,
 /// bytes moved. The rankings therefore favour sustained use over a lucky
-/// instant, which is the point of the card.
-struct AppUsageCard: View {
-    /// A plain reference for issuing queries — deliberately not observed.
-    /// Refresh rides on `sampledAt`, handed down by value like every other
-    /// card's data, so this card observes nothing either.
-    let engine: MetricsEngine
-    var sampledAt: Date
+/// instant, which is the point of the windows.
+struct AppUsageList: View {
+    /// The latest ledger answer, which may still be for the previous window
+    /// for the instant after a switch — showing it beats flashing empty.
+    var report: AppUsageReport?
+    var window: UsageWindow
+    var metric: ProcessMetric
     var rowCount: Int
-
-    @State private var metric: ProcessMetric = .cpu
-    @State private var window: UsageWindow = .twentyMinutes
-    @State private var report: AppUsageReport?
 
     var body: some View {
         let ranked = rankedApps
         let scale = max(ranked.first?.value ?? 1, .leastNonzeroMagnitude)
 
-        Card(
-            accent: metric.accent, title: "App Usage", symbol: "clock.arrow.circlepath",
-            trailing: trailing
-        ) {
-            Picker("Rank by", selection: $metric.animation(.easeInOut(duration: 0.15))) {
-                ForEach(ProcessMetric.allCases) { option in
-                    Text(option.rawValue).tag(option)
+        if ranked.isEmpty {
+            Text(emptyMessage)
+                .metricLabel()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.vertical, 8)
+        } else {
+            VStack(spacing: 4) {
+                ForEach(ranked) { app in
+                    AppUsageRowView(
+                        app: app,
+                        windowLabel: window.spoken,
+                        accent: metric.accent,
+                        fraction: app.value / scale)
                 }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .controlSize(.small)
-            .accessibilityLabel("Rank apps by")
-
-            Picker("Over", selection: $window.animation(.easeInOut(duration: 0.15))) {
-                ForEach(UsageWindow.allCases) { option in
-                    Text(option.label).tag(option)
-                }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .controlSize(.small)
-            .accessibilityLabel("Time frame")
-
-            if ranked.isEmpty {
-                Text(emptyMessage)
-                    .metricLabel()
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.vertical, 8)
-            } else {
-                VStack(spacing: 4) {
-                    ForEach(ranked) { app in
-                        AppUsageRowView(
-                            app: app,
-                            windowLabel: window.spoken,
-                            accent: metric.accent,
-                            fraction: app.value / scale)
-                    }
-                }
-            }
-
-            if let footnote {
-                Text(footnote)
-                    .metricLabel()
-                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
-        .onAppear { query() }
-        .onChange(of: window) { query() }
-        // One re-query per fresh process table, not per engine tick: the
-        // ledger only moves when a table lands, and the query answers from
-        // memory on the sampler queue either way.
-        .onChange(of: sampledAt) { query() }
-    }
 
-    private func query() {
-        engine.appUsage(over: window.rawValue) { report = $0 }
+        if let footnote {
+            Text(footnote)
+                .metricLabel()
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
     }
 
     // MARK: - Ranking
@@ -157,7 +119,7 @@ struct AppUsageCard: View {
         switch metric {
         case .cpu:
             // Average percent of one core over the window — the same
-            // convention as the live table, so the two cards read alike.
+            // convention as the live rows, so the two read alike.
             return String(
                 format: "%.1f%%", Double(totals.cpuNanos) / (covered * 1e9) * 100)
         case .memory:
@@ -173,12 +135,7 @@ struct AppUsageCard: View {
         }
     }
 
-    // MARK: - Chrome
-
-    private var trailing: String? {
-        guard let report, !report.rows.isEmpty else { return nil }
-        return "\(report.rows.count) apps"
-    }
+    // MARK: - Messages
 
     /// Shown only when the window was not fully observed, so a number diluted
     /// by sleep or a recent launch says so instead of just reading low.
@@ -310,7 +267,7 @@ private struct AppUsageRowView: View {
     }
 }
 
-/// Icon per attribution, memoised for the same reason the process table's is:
+/// Icon per attribution, memoised for the same reason the live rows' is:
 /// `NSWorkspace.icon(forFile:)` hits the disk and rows re-render on every
 /// fresh sample. Keyed by anchor path, so the two caches never fight.
 @MainActor

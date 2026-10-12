@@ -59,10 +59,8 @@ struct DashboardView: View {
                 }
                 .fixedSize(horizontal: false, vertical: true)
 
-                ProcessesCard(snapshot: snapshot, rowCount: preferences.processRowCount)
-                AppUsageCard(
-                    engine: engine,
-                    sampledAt: snapshot.processes.sampledAt,
+                ProcessesCard(
+                    engine: engine, snapshot: snapshot,
                     rowCount: preferences.processRowCount)
                 PowerCard(
                     snapshot: snapshot, history: engine.history,

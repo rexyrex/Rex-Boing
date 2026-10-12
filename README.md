@@ -112,7 +112,7 @@ mode opts out of it and keeps the label colour throughout.
 | Graphics | Device / renderer / tiler utilisation, GPU clock, GPU power, core count, mapped and allocated memory, GPU temperature |
 | Memory | App / wired / compressed / cached breakdown, kernel memory-pressure level, free, inactive, purgeable — **and swap**: used, free, page-in and page-out rates, encryption state |
 | Thermals | CPU, GPU, peak and battery temperatures, fan speeds against their rated range, OS thermal-pressure state, and every individual sensor (186 on an M1 Pro) grouped by subsystem |
-| Top processes | Ranked by **CPU, memory, GPU, energy or disk I/O**, with app icons; right-click to reveal, copy or quit |
+| Top processes | Ranked by **CPU, memory, GPU, energy or disk I/O**, with app icons — **Live** per process, right-click to reveal, copy or quit, or by app over the last **5 minutes to 24 hours**, helpers folded into the app they belong to |
 | Power | Whole-machine draw as the headline and history graph — the SMC's system rail, so fans, display and SSD count, on mains as well as on battery — beside per-component CPU / GPU / Neural Engine / SoC package tiles and the live DC-in draw, battery charge, cycle count, health, cell temperature and condition — and **who is keeping the Mac awake**: every process holding a display- or system-sleep assertion, with its own stated reason in the tooltip |
 | Network | Up/down rates with history and session totals, primary interface and local address |
 | Storage | Read/write rates with history and session totals, volume capacity |

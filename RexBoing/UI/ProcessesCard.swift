@@ -2,36 +2,53 @@ import SwiftUI
 import AppKit
 import Darwin
 
-/// Top processes, switchable between CPU, GPU, memory, energy and disk I/O.
+/// What the process card ranks over: the newest process table, or the usage
+/// ledger's account of a trailing window.
+enum ProcessSpan: Hashable, Identifiable {
+    case live
+    case window(UsageWindow)
+
+    static let allCases: [ProcessSpan] = [.live] + UsageWindow.allCases.map { .window($0) }
+
+    var id: Self { self }
+
+    var label: String {
+        switch self {
+        case .live: return "Live"
+        case .window(let window): return window.label
+        }
+    }
+}
+
+/// Top processes, switchable between CPU, GPU, memory, energy and disk I/O,
+/// and between right now and a trailing window.
+///
+/// Live ranks individual processes on the newest sample — what is busy this
+/// second, with a pid to quit. The windows rank apps on the work the usage
+/// ledger accumulated, helpers folded into the app they belong to, which is
+/// what answers "what has been draining the battery all afternoon". It is one
+/// question asked over two time frames, so it is one card with one picker.
 ///
 /// The GPU and disk tabs are the interesting ones: per-process GPU accounting
 /// is not something menu bar monitors usually show, and the disk ranking is
 /// the fastest answer to "what is hammering the SSD" — real device traffic,
 /// not page-cache hits.
 struct ProcessesCard: View {
+    /// A plain reference for issuing ledger queries — deliberately not
+    /// observed. Refresh rides on the snapshot, handed down by value like
+    /// every other card's data, so this card observes nothing either.
+    let engine: MetricsEngine
     var snapshot: Snapshot
     var rowCount: Int
 
     @State private var metric: ProcessMetric = .cpu
-
-    /// Ranking happens on the sampler queue, so this is a slice rather than a
-    /// sort. Resolved once here and handed down, because reading it from the
-    /// view body per row is what made it expensive in the first place.
-    private var rows: [ProcessRow] {
-        Array(snapshot.processes.top(by: metric, limit: rowCount))
-    }
-
-    private var accent: Color { metric.accent }
+    @State private var span: ProcessSpan = .live
+    @State private var report: AppUsageReport?
 
     var body: some View {
-        let rows = self.rows
-        // Bars are scaled against the busiest row rather than an absolute
-        // maximum, so the panel stays legible when everything is close to idle.
-        let scale = max(rows.first.map { metric.value(of: $0) } ?? 1, 0.0001)
-
         Card(
-            accent: accent, title: "Top Processes", symbol: "list.bullet",
-            trailing: "\(snapshot.processes.count) running"
+            accent: metric.accent, title: "Top Processes", symbol: "list.bullet",
+            trailing: trailing
         ) {
             Picker("Rank by", selection: $metric.animation(.easeInOut(duration: 0.15))) {
                 ForEach(ProcessMetric.allCases) { option in
@@ -41,29 +58,87 @@ struct ProcessesCard: View {
             .pickerStyle(.segmented)
             .labelsHidden()
             .controlSize(.small)
-            .accessibilityLabel("Rank processes by")
+            .accessibilityLabel("Rank by")
 
-            if rows.isEmpty {
-                Text(emptyMessage)
-                    .metricLabel()
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.vertical, 8)
-            } else {
-                VStack(spacing: 4) {
-                    ForEach(rows) { row in
-                        ProcessRowView(
-                            row: row,
-                            metric: metric,
-                            accent: accent,
-                            fraction: metric.value(of: row) / scale)
-                    }
+            Picker("Over", selection: $span.animation(.easeInOut(duration: 0.15))) {
+                ForEach(ProcessSpan.allCases) { option in
+                    Text(option.label).tag(option)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .controlSize(.small)
+            .accessibilityLabel("Time frame")
+
+            switch span {
+            case .live:
+                LiveProcessList(
+                    processes: snapshot.processes, metric: metric, rowCount: rowCount)
+            case .window(let window):
+                AppUsageList(
+                    report: report, window: window, metric: metric, rowCount: rowCount)
+            }
+        }
+        .onChange(of: span) { query() }
+        // One re-query per fresh process table, not per engine tick: the
+        // ledger only moves when a table lands, and the query answers from
+        // memory on the sampler queue either way.
+        .onChange(of: snapshot.processes.sampledAt) { query() }
+    }
+
+    /// Live reads the snapshot it was handed; only a window needs the ledger,
+    /// so nothing is asked of it while Live is on show.
+    private func query() {
+        guard case .window(let window) = span else { return }
+        engine.appUsage(over: window.rawValue) { report = $0 }
+    }
+
+    private var trailing: String? {
+        switch span {
+        case .live:
+            return "\(snapshot.processes.count) running"
+        case .window:
+            guard let report, !report.rows.isEmpty else { return nil }
+            return "\(report.rows.count) apps"
+        }
+    }
+}
+
+/// The newest process table, ranked.
+private struct LiveProcessList: View {
+    var processes: ProcessMetrics
+    var metric: ProcessMetric
+    var rowCount: Int
+
+    var body: some View {
+        // Ranking happens on the sampler queue, so this is a slice rather
+        // than a sort, resolved once here and handed down — reading it from
+        // the body per row is what made it expensive in the first place.
+        let rows = Array(processes.top(by: metric, limit: rowCount))
+        // Bars are scaled against the busiest row rather than an absolute
+        // maximum, so the panel stays legible when everything is close to idle.
+        let scale = max(rows.first.map { metric.value(of: $0) } ?? 1, 0.0001)
+
+        if rows.isEmpty {
+            Text(emptyMessage)
+                .metricLabel()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.vertical, 8)
+        } else {
+            VStack(spacing: 4) {
+                ForEach(rows) { row in
+                    ProcessRowView(
+                        row: row,
+                        metric: metric,
+                        accent: metric.accent,
+                        fraction: metric.value(of: row) / scale)
                 }
             }
         }
     }
 
     private var emptyMessage: String {
-        if metric == .gpu && !snapshot.processes.gpuAttributionAvailable {
+        if metric == .gpu && !processes.gpuAttributionAvailable {
             return "Per-process GPU usage is unavailable for this sample."
         }
         return "Nothing measurable in the last interval."
