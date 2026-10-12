@@ -1,24 +1,44 @@
 # Rex Boing
 
 [![CI](https://github.com/rexyrex/Rex-Boing/actions/workflows/ci.yml/badge.svg)](https://github.com/rexyrex/Rex-Boing/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/rexyrex/Rex-Boing)](https://github.com/rexyrex/Rex-Boing/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-A macOS menu bar telemetry app. A tiny tyrannosaur runs in your menu bar and
-quickens when your Mac is busier, with a dashboard behind it that reports
-considerably more about the machine than a menu bar monitor usually does.
+**A cute menu bar pet shows you *that* your Mac is busy. Rex Boing shows you *why*.**
 
-Built for Apple silicon, degrades gracefully on Intel.
+A tiny tyrannosaur runs in your menu bar and speeds up as your Mac works
+harder. Click it for a dashboard that shows what is going on: which app is on
+the CPU, the GPU, the disk and the battery, how many watts the whole machine is
+drawing, every temperature sensor, and what is keeping the Mac awake.
 
-![menu bar](docs/menubar.png)
+<p align="center"><img src="docs/menubar.gif" width="504" alt="The Rex Boing menu bar item: the rex trots at 8% CPU, runs faster as load climbs, and turns orange and then red at 100%."></p>
 
-<img width="560" alt="Dashboard, as it opens" src="docs/dashboard.png">
+**[Website](https://rexyrex.github.io/Rex-Boing/)** ·
+**[Download](https://github.com/rexyrex/Rex-Boing/releases/latest/download/Rex.Boing.zip)** ·
+**[60-second tour](https://rexyrex.github.io/Rex-Boing/#film)**
 
-<img width="560" alt="Dashboard, scrolled to the bottom" src="docs/dashboard-lower.png">
+- **Free and open source** (MIT), signed with a Developer ID and notarized.
+- **No helper tool, no `sudo`, no network connections, no permission prompts.**
+  Everything is read through unprivileged system APIs.
+- **Per-app CPU, memory, GPU, energy and disk I/O**, live or over the last
+  5 minutes to 24 hours.
+- **"What was that spike?"** Click any graph to see every process at that
+  instant.
+- **Real watts** from the SMC, every sensor (186 on an M1 Pro), fans, battery
+  health, and who is holding a sleep assertion.
+- **Sixteen rexes** to choose from, all drawn in code. About 1.4% of one core
+  at the default settings.
 
 ## Installing
 
 Requires macOS 14 Sonoma or later. Apple silicon gets every reading; on Intel
 the rows whose counters do not exist there are hidden rather than faked.
+
+**Homebrew.**
+
+```bash
+brew install --cask rexyrex/tap/rex-boing
+```
 
 **Download.** Notarized builds are published on the
 [Releases](https://github.com/rexyrex/Rex-Boing/releases) page. Unzip the
@@ -42,6 +62,26 @@ right-click for the character gallery and settings, and turn on **Launch at
 login** in Settings if you want it to stay. The app makes no network
 connections and asks for no permissions: everything it shows is read through
 unprivileged system APIs, so there is no helper tool and no password prompt.
+
+<img width="560" alt="Dashboard, as it opens" src="docs/dashboard.png">
+
+<img width="560" alt="Dashboard, scrolled to the bottom" src="docs/dashboard-lower.png">
+
+## How it compares
+
+- **[RunCat](https://github.com/runcat-dev/RunCatNeo)** is where the idea of a
+  running menu bar pet comes from, and it is the lighter choice if a pet and a
+  few headline numbers are all you want. Rex Boing keeps the pet and puts a
+  full monitor behind it.
+- **[Stats](https://github.com/exelban/stats)** is the established free, open
+  source menu bar monitor, with a module for nearly everything. Rex Boing
+  covers less hardware breadth and goes deeper on attribution: per-app GPU and
+  disk rankings, a history you can click into, and sleep assertions.
+- **iStat Menus** is the polished paid option. Rex Boing is free.
+
+## The sixteen rexes
+
+<p align="center"><img src="docs/rexes.gif" width="660" alt="All sixteen rexes animating at once, speeding up and turning red as load rises."></p>
 
 ## Why a tyrannosaur
 
