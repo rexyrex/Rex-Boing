@@ -1,71 +1,75 @@
-# Rex Boing
+<p align="center">
+  <img src="docs/site/icon-180.png" width="96" height="96" alt="">
+</p>
 
-[![CI](https://github.com/rexyrex/Rex-Boing/actions/workflows/ci.yml/badge.svg)](https://github.com/rexyrex/Rex-Boing/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/rexyrex/Rex-Boing)](https://github.com/rexyrex/Rex-Boing/releases/latest)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+<h1 align="center">Rex Boing</h1>
 
-**A cute menu bar pet shows you *that* your Mac is busy. Rex Boing shows you *why*.**
+<p align="center">
+  <strong>Your Mac is busy. Rex Boing shows you why.</strong><br>
+  A tiny T-rex runs in your menu bar and speeds up as your Mac works harder.<br>
+  Click it to see which app is using the CPU, GPU, disk and battery, how many<br>
+  watts your Mac is drawing, and what is keeping it awake.
+</p>
 
-A tiny tyrannosaur runs in your menu bar and speeds up as your Mac works
-harder. Click it for a dashboard that shows what is going on: which app is on
-the CPU, the GPU, the disk and the battery, how many watts the whole machine is
-drawing, every temperature sensor, and what is keeping the Mac awake.
+<p align="center">
+  <a href="https://github.com/rexyrex/Rex-Boing/actions/workflows/ci.yml"><img src="https://github.com/rexyrex/Rex-Boing/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/rexyrex/Rex-Boing/releases/latest"><img src="https://img.shields.io/github/v/release/rexyrex/Rex-Boing" alt="Latest release"></a>
+  <img src="https://img.shields.io/badge/macOS-14%2B-lightgrey" alt="macOS 14 or later">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT license"></a>
+</p>
 
-<p align="center"><img src="docs/menubar.gif" width="504" alt="The Rex Boing menu bar item: the rex trots at 8% CPU, runs faster as load climbs, and turns orange and then red at 100%."></p>
+<p align="center">
+  <a href="https://github.com/rexyrex/Rex-Boing/releases/latest/download/Rex.Boing.zip"><strong>Download</strong></a> ·
+  <a href="https://rexyrex.github.io/Rex-Boing/">Website</a> ·
+  <a href="https://rexyrex.github.io/Rex-Boing/#tour">60-second tour</a>
+</p>
 
-**[Website](https://rexyrex.github.io/Rex-Boing/)** ·
-**[Download](https://github.com/rexyrex/Rex-Boing/releases/latest/download/Rex.Boing.zip)** ·
-**[60-second tour](https://rexyrex.github.io/Rex-Boing/#film)**
+<p align="center">
+  <a href="https://rexyrex.github.io/Rex-Boing/"><img src="docs/hero.png" width="880" alt="A Mac desktop with the Rex Boing menu bar item, an orange running rex at 78% CPU, and the dashboard open below it: processor, graphics, memory and thermals cards, and top processes."></a>
+</p>
 
-- **Free and open source** (MIT), signed with a Developer ID and notarized.
-- **No helper tool, no `sudo`, no network connections, no permission prompts.**
-  Everything is read through unprivileged system APIs.
-- **Per-app CPU, memory, GPU, energy and disk I/O**, live or over the last
-  5 minutes to 24 hours.
-- **"What was that spike?"** Click any graph to see every process at that
-  instant.
-- **Real watts** from the SMC, every sensor (186 on an M1 Pro), fans, battery
-  health, and who is holding a sleep assertion.
-- **Sixteen rexes** to choose from, all drawn in code. About 1.4% of one core
-  at the default settings.
-
-## Installing
-
-Requires macOS 14 Sonoma or later. Apple silicon gets every reading; on Intel
-the rows whose counters do not exist there are hidden rather than faked.
-
-**Homebrew.**
+## Install
 
 ```bash
 brew install --cask rexyrex/tap/rex-boing
 ```
 
-**Download.** Notarized builds are published on the
-[Releases](https://github.com/rexyrex/Rex-Boing/releases) page. Unzip the
-zip, drag `Rex Boing.app` into `/Applications`, and open it. The
-release build is signed with a Developer ID and notarized, so Gatekeeper lets
-it through without any workaround.
+Or download the [latest release](https://github.com/rexyrex/Rex-Boing/releases/latest),
+unzip it, drag `Rex Boing.app` into Applications and open it. Builds are
+signed with a Developer ID and notarized, so Gatekeeper lets them straight
+through. Requires macOS 14 Sonoma or later; Apple silicon gets every reading,
+and on Intel the rows whose counters do not exist there are hidden rather than
+faked.
 
-**Or build it yourself.** Two commands, given Xcode 26 or newer and Homebrew:
+Click the rex for the dashboard, right-click it for the rex gallery and
+settings, and turn on **Launch at login** in Settings to keep it. To build it
+yourself instead, see [Building](#building).
 
-```bash
-brew install xcodegen
-./build.sh --install
-```
+## What you get
 
-That generates the Xcode project, builds Release, copies the app to
-`/Applications` and launches it. Leave off `--install` to keep the app in
-`dist/` instead.
+<p align="center"><img src="docs/menubar.gif" width="504" alt="The menu bar item: the rex trots at 8% CPU, runs faster as load climbs, and turns orange and then red at 100%."></p>
 
-Either way the rex appears in the menu bar. Click it for the dashboard,
-right-click for the character gallery and settings, and turn on **Launch at
-login** in Settings if you want it to stay. The app makes no network
-connections and asks for no permissions: everything it shows is read through
-unprivileged system APIs, so there is no helper tool and no password prompt.
+- **A pet that reads the room.** The rex's pace follows CPU load, it turns
+  orange past 70% and red at 100%, and there are sixteen of it.
+- **Which app is using what.** Top processes by CPU, memory, GPU, energy or
+  disk I/O, live or over the last 5 minutes to 24 hours, with helpers folded
+  into their app.
+- **What was that spike?** Click any graph to see every process at that
+  instant, with all five measures and wakeups side by side.
+- **Real watts.** Whole-machine power from the SMC, CPU, GPU and Neural Engine
+  power, battery health, and every app holding off sleep.
+- **Every sensor.** Per-core load and clocks, all 186 temperature sensors on an
+  M1 Pro, fans, memory pressure, swap, network and disk.
+- **Nothing extra running.** No helper tool, no `sudo`, no network
+  connections, no permission prompts, and about 1.4% of one core at the
+  default settings.
 
-<img width="560" alt="Dashboard, as it opens" src="docs/dashboard.png">
-
-<img width="560" alt="Dashboard, scrolled to the bottom" src="docs/dashboard-lower.png">
+<table>
+  <tr>
+    <td width="50%"><img src="docs/dashboard.png" alt="The dashboard as it opens: processor, graphics, memory and thermals cards with history graphs, and the top processes list."></td>
+    <td width="50%"><img src="docs/dashboard-lower.png" alt="The dashboard scrolled down: the end of the top processes list, power with what is keeping the Mac awake, network and storage."></td>
+  </tr>
+</table>
 
 ## How it compares
 
@@ -79,9 +83,21 @@ unprivileged system APIs, so there is no helper tool and no password prompt.
   disk rankings, a history you can click into, and sleep assertions.
 - **iStat Menus** is the polished paid option. Rex Boing is free.
 
-## The sixteen rexes
+## How it works
 
-<p align="center"><img src="docs/rexes.gif" width="660" alt="All sixteen rexes animating at once, speeding up and turning red as load rises."></p>
+The rest of this README is about how the app is built: how the rex is drawn,
+where every number comes from, and the platform behaviour that had to be
+worked around to get them right.
+
+- [Why a tyrannosaur](#why-a-tyrannosaur)
+- [What it shows](#what-it-shows), including why
+  [the per-process CPU counters are not nanoseconds](#the-per-process-cpu-counters-are-not-nanoseconds)
+- [Where the numbers come from](#where-the-numbers-come-from), including why
+  [energy channels are a tree, not a list](#energy-channels-are-a-tree-not-a-list)
+  and [energy counters are published, not read](#energy-counters-are-published-not-read)
+- [Cost](#cost) and [making it smooth](#making-it-smooth)
+- [Building](#building), [checks](#checks) and [releasing](#releasing)
+- [Contributing](#contributing), including [adding a rex](#adding-a-rex)
 
 ## Why a tyrannosaur
 
@@ -120,7 +136,10 @@ wobbling lockout, squat, drive — whose plates grow with the load. All of them
 are pure functions of `(time, load)` on the same colour ramp and pace curve,
 eyes blinked on a deterministic clock, and one headless check covers the lot. Everything below is drawn by the same
 code that draws the menu bar, at the same proportions
-(`Tools/render-figures.swift` makes the picture):
+(`Tools/render-animations.sh` makes the animation, `Tools/render-figures.swift`
+the sheet):
+
+<p align="center"><img src="docs/rexes.gif" width="660" alt="All sixteen rexes animating at once, speeding up and turning red as load rises."></p>
 
 ![rexes](docs/rexes.png)
 
@@ -491,6 +510,16 @@ swiftc -O -o /tmp/render-figures Tools/render-figures.swift \
 /tmp/render-figures menubar docs/menubar.png
 ```
 
+The animations — the menu bar and character GIFs above, and the website's
+menu bar item and gallery clips — come from `Tools/render-frames.swift`, which
+draws the same visualiser as PNG frames at any scale and load, and
+`Tools/render-animations.sh`, which renders and encodes the lot (it needs
+`ffmpeg`):
+
+```bash
+Tools/render-animations.sh
+```
+
 `Tools/render-dashboard.swift` runs the real engine against your Mac for a
 minute, hosts the real dashboard view in an off-screen window and reads it
 back at 2×, once as it opens and once scrolled to the bottom. It compiles
@@ -539,7 +568,9 @@ RexBoing/
   Assets.xcassets generated app icon
 Tools/            headless checks (run them all with Tools/check.sh), the app
                   icon generator and the README figure renderers
-docs/             images for this README, all generated by Tools/
+docs/             the website (served by GitHub Pages) and this README's
+                  images; the figures, animations and dashboard renders
+                  are generated by Tools/
 project.yml       XcodeGen spec; RexBoing.xcodeproj is generated from it
 build.sh          generate + build Release (+ --install to /Applications)
 package.sh        sign, notarize and zip a release (maintainers)
@@ -547,13 +578,38 @@ package.sh        sign, notarize and zip a release (maintainers)
 
 ## Contributing
 
-Issues and pull requests are welcome. Before opening a PR, run `./build.sh`
-and `Tools/check.sh` and make sure both pass; if you change a visualiser,
+Issues and pull requests are welcome, from bug reports with readings that look
+wrong on your Mac to new rexes. Before opening a PR, run `./build.sh` and
+`Tools/check.sh` and make sure both pass; if you change a visualiser,
 regenerate the icon and the README figures with the tools above so they stay
 true to the code. Keep the tone of the comments: they explain *why* a thing is
 done the way it is, especially where the platform behaves differently from
 what the documentation implies — that reasoning is most of what makes this
 codebase readable.
+
+A reading that looks wrong is worth an issue on its own. Include your Mac
+model and macOS version, and what Settings → About says about which data
+sources resolved.
+
+### Adding a rex
+
+A new rex is the most self-contained change in the codebase: one enum case
+and one drawing function in `RexBoing/StatusBar/Visualizer.swift`, and
+everything else picks it up from `Visualizer.allCases` — the Settings
+gallery, the right-click menu, the headless drawing check and the README's
+figures and animations.
+
+1. Add a case to `Visualizer`, with its `name`, its one-line `detail`, and
+   its `idleRate` and `maxRate` (cycles a second at rest and flat out).
+2. Write its `draw…(time:energy:pen:)` function and add it to the switch in
+   `draw`. It must be a pure function of time and load: no stored state and
+   no random numbers, so any frame can be reproduced exactly.
+3. Move the whole silhouette — bounce, travel, rotation, squash. At nineteen
+   points tall, limb motion alone does not read. Save the big move for past
+   two-thirds load, the way the others do.
+4. Run `Tools/check.sh visual`, regenerate `docs/rexes.png` and the
+   animations, and add it to the gallery list in `docs/index.html` so the
+   website shows it too. A GIF of it in the pull request helps.
 
 ## License
 
