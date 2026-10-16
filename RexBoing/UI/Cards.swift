@@ -2,16 +2,22 @@ import SwiftUI
 
 // MARK: - CPU
 
-struct CPUCard: View {
-    var snapshot: Snapshot
-    var history: MetricsHistory
-    var unit: TemperatureUnit
+public struct CPUCard: View {
+    public init(snapshot: Snapshot, history: MetricsHistory, unit: TemperatureUnit) {
+        self.snapshot = snapshot
+        self.history = history
+        self.unit = unit
+    }
+
+    public var snapshot: Snapshot
+    public var history: MetricsHistory
+    public var unit: TemperatureUnit
 
     @State private var expanded = false
 
     private var cpu: CPUMetrics { snapshot.cpu }
 
-    var body: some View {
+    public var body: some View {
         Card(
             accent: Palette.cpu, title: "Processor", symbol: "cpu",
             headline: Format.percent(cpu.total, decimals: 1)
@@ -121,16 +127,22 @@ struct CPUCard: View {
 
 // MARK: - GPU
 
-struct GPUCard: View {
-    var snapshot: Snapshot
-    var history: MetricsHistory
-    var unit: TemperatureUnit
+public struct GPUCard: View {
+    public init(snapshot: Snapshot, history: MetricsHistory, unit: TemperatureUnit) {
+        self.snapshot = snapshot
+        self.history = history
+        self.unit = unit
+    }
+
+    public var snapshot: Snapshot
+    public var history: MetricsHistory
+    public var unit: TemperatureUnit
 
     @State private var expanded = false
 
     private var gpu: GPUMetrics { snapshot.gpu }
 
-    var body: some View {
+    public var body: some View {
         Card(
             accent: Palette.gpu, title: "Graphics", symbol: "cube.transparent",
             trailing: gpu.available ? nil : "unavailable",
@@ -200,15 +212,20 @@ struct GPUCard: View {
 
 // MARK: - Memory
 
-struct MemoryCard: View {
-    var snapshot: Snapshot
-    var history: MetricsHistory
+public struct MemoryCard: View {
+    public init(snapshot: Snapshot, history: MetricsHistory) {
+        self.snapshot = snapshot
+        self.history = history
+    }
+
+    public var snapshot: Snapshot
+    public var history: MetricsHistory
 
     @State private var expanded = false
 
     private var memory: MemoryMetrics { snapshot.memory }
 
-    var body: some View {
+    public var body: some View {
         Card(
             accent: Palette.memory, title: "Memory", symbol: "memorychip",
             trailing: "\(Format.bytes(memory.used)) of \(Format.bytes(memory.total))",
@@ -332,22 +349,29 @@ struct MemoryCard: View {
 
 // MARK: - Thermal
 
-struct ThermalCard: View {
-    var snapshot: Snapshot
-    var history: MetricsHistory
-    var unit: TemperatureUnit
+public struct ThermalCard: View {
+    public init(snapshot: Snapshot, history: MetricsHistory, unit: TemperatureUnit) {
+        self.snapshot = snapshot
+        self.history = history
+        self.unit = unit
+    }
+
+    public var snapshot: Snapshot
+    public var history: MetricsHistory
+    public var unit: TemperatureUnit
 
     @State private var expanded = false
+    @Environment(\.machineNoun) private var machineNoun
 
     private var thermal: ThermalMetrics { snapshot.thermal }
 
-    var body: some View {
+    public var body: some View {
         Card(
             accent: Palette.thermal, title: "Thermals", symbol: "thermometer.medium",
             trailing: thermal.thermalState.label
         ) {
             if thermal.sensors.isEmpty {
-                Text("This Mac exposes no readable temperature sensors.")
+                Text("This \(machineNoun) exposes no readable temperature sensors.")
                     .metricLabel()
             } else {
                 HStack(spacing: 0) {
@@ -442,15 +466,23 @@ struct ThermalCard: View {
 
 // MARK: - Power
 
-struct PowerCard: View {
-    var snapshot: Snapshot
-    var history: MetricsHistory
-    var unit: TemperatureUnit
+public struct PowerCard: View {
+    public init(snapshot: Snapshot, history: MetricsHistory, unit: TemperatureUnit) {
+        self.snapshot = snapshot
+        self.history = history
+        self.unit = unit
+    }
+
+    public var snapshot: Snapshot
+    public var history: MetricsHistory
+    public var unit: TemperatureUnit
+
+    @Environment(\.machineNoun) private var machineNoun
 
     private var power: PowerMetrics { snapshot.power }
     private var battery: BatteryMetrics { snapshot.battery }
 
-    var body: some View {
+    public var body: some View {
         Card(
             accent: Palette.power, title: "Power", symbol: "bolt",
             // Whole-machine draw — fans, display and all — not the SoC
@@ -505,7 +537,7 @@ struct PowerCard: View {
             // battery, and a card that is only a header looks broken rather
             // than empty — same fallback the graphics and thermal cards use.
             if !power.hasAny && !battery.present {
-                Text("No power telemetry available on this Mac.")
+                Text("No power telemetry available on this \(machineNoun).")
                     .metricLabel()
             }
 
@@ -661,11 +693,16 @@ struct PowerCard: View {
 
 // MARK: - Network
 
-struct NetworkCard: View {
-    var snapshot: Snapshot
-    var history: MetricsHistory
+public struct NetworkCard: View {
+    public init(snapshot: Snapshot, history: MetricsHistory) {
+        self.snapshot = snapshot
+        self.history = history
+    }
 
-    var body: some View {
+    public var snapshot: Snapshot
+    public var history: MetricsHistory
+
+    public var body: some View {
         Card(
             accent: Palette.network, title: "Network", symbol: "network",
             trailing: snapshot.network.primaryInterface,
@@ -721,11 +758,16 @@ struct NetworkCard: View {
 
 // MARK: - Storage
 
-struct StorageCard: View {
-    var snapshot: Snapshot
-    var history: MetricsHistory
+public struct StorageCard: View {
+    public init(snapshot: Snapshot, history: MetricsHistory) {
+        self.snapshot = snapshot
+        self.history = history
+    }
 
-    var body: some View {
+    public var snapshot: Snapshot
+    public var history: MetricsHistory
+
+    public var body: some View {
         Card(
             accent: Palette.disk, title: "Storage", symbol: "internaldrive",
             headline: Format.rate(

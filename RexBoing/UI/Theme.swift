@@ -4,13 +4,13 @@ import AppKit
 /// How alarming a value is. Drives the colour ramp everywhere — menu bar
 /// readouts, gauge rings, sparklines — so a glance reads the same in every
 /// part of the app.
-enum Severity {
+public enum Severity: Sendable {
     case calm
     case elevated
     case high
     case critical
 
-    var swiftUIColor: Color {
+    public var swiftUIColor: Color {
         switch self {
         case .calm: return Palette.calm
         case .elevated: return Palette.elevated
@@ -26,7 +26,7 @@ enum Severity {
     /// readout on every sample and so that two cells with the same severity
     /// compare equal — the menu bar's frame cache uses cell equality to decide
     /// whether anything needs redrawing.
-    var color: NSColor? {
+    public var color: NSColor? {
         switch self {
         case .calm: return nil
         case .elevated: return Self.elevatedColor
@@ -39,7 +39,7 @@ enum Severity {
     private static let highColor = NSColor(Palette.high)
     private static let criticalColor = NSColor(Palette.critical)
 
-    static func load(_ fraction: Double) -> Severity {
+    public static func load(_ fraction: Double) -> Severity {
         switch fraction {
         case ..<0.6: return .calm
         case ..<0.8: return .elevated
@@ -50,7 +50,7 @@ enum Severity {
 
     /// Thresholds sized for Apple silicon, which idles warm and sustains into
     /// the 90s under load without anything being wrong.
-    static func temperature(_ celsius: Double) -> Severity {
+    public static func temperature(_ celsius: Double) -> Severity {
         switch celsius {
         case ..<70: return .calm
         case ..<85: return .elevated
@@ -59,7 +59,7 @@ enum Severity {
         }
     }
 
-    static func memory(_ level: MemoryPressureLevel) -> Severity {
+    public static func memory(_ level: MemoryPressureLevel) -> Severity {
         switch level {
         case .normal: return .calm
         case .warning: return .high
@@ -67,7 +67,7 @@ enum Severity {
         }
     }
 
-    static func thermal(_ state: ProcessInfo.ThermalState) -> Severity {
+    public static func thermal(_ state: ProcessInfo.ThermalState) -> Severity {
         switch state {
         case .nominal: return .calm
         case .fair: return .elevated
@@ -78,39 +78,39 @@ enum Severity {
     }
 }
 
-enum Palette {
+public enum Palette {
     // Subsystem accents. Each subsystem keeps its hue across the gauge, the
     // sparkline and the section header so the eye can track one metric down
     // the panel without re-reading labels.
-    static let cpu = Color(red: 0.28, green: 0.62, blue: 1.00)
-    static let gpu = Color(red: 0.72, green: 0.45, blue: 1.00)
-    static let memory = Color(red: 0.25, green: 0.80, blue: 0.60)
-    static let swap = Color(red: 1.00, green: 0.72, blue: 0.28)
-    static let thermal = Color(red: 1.00, green: 0.50, blue: 0.32)
-    static let power = Color(red: 1.00, green: 0.85, blue: 0.30)
-    static let network = Color(red: 0.30, green: 0.80, blue: 0.85)
-    static let disk = Color(red: 0.55, green: 0.60, blue: 0.95)
-    static let battery = Color(red: 0.45, green: 0.85, blue: 0.45)
+    public static let cpu = Color(red: 0.28, green: 0.62, blue: 1.00)
+    public static let gpu = Color(red: 0.72, green: 0.45, blue: 1.00)
+    public static let memory = Color(red: 0.25, green: 0.80, blue: 0.60)
+    public static let swap = Color(red: 1.00, green: 0.72, blue: 0.28)
+    public static let thermal = Color(red: 1.00, green: 0.50, blue: 0.32)
+    public static let power = Color(red: 1.00, green: 0.85, blue: 0.30)
+    public static let network = Color(red: 0.30, green: 0.80, blue: 0.85)
+    public static let disk = Color(red: 0.55, green: 0.60, blue: 0.95)
+    public static let battery = Color(red: 0.45, green: 0.85, blue: 0.45)
 
-    static let calm = Color(red: 0.36, green: 0.78, blue: 0.52)
-    static let elevated = Color(red: 0.95, green: 0.76, blue: 0.28)
-    static let high = Color(red: 0.98, green: 0.56, blue: 0.24)
-    static let critical = Color(red: 0.96, green: 0.36, blue: 0.36)
+    public static let calm = Color(red: 0.36, green: 0.78, blue: 0.52)
+    public static let elevated = Color(red: 0.95, green: 0.76, blue: 0.28)
+    public static let high = Color(red: 0.98, green: 0.56, blue: 0.24)
+    public static let critical = Color(red: 0.96, green: 0.36, blue: 0.36)
 
-    static let cardBackground = Color.primary.opacity(0.045)
-    static let cardStroke = Color.primary.opacity(0.07)
-    static let trackBackground = Color.primary.opacity(0.09)
+    public static let cardBackground = Color.primary.opacity(0.045)
+    public static let cardStroke = Color.primary.opacity(0.07)
+    public static let trackBackground = Color.primary.opacity(0.09)
 
     /// Ink for the sparkline's hover crosshair and readout. Opaque and opposite
     /// the trace in tone, because it is drawn over a solid block of accent — a
     /// translucent marker would take the accent's colour and disappear into it.
-    static let graphMarker = Color(nsColor: .textBackgroundColor)
+    public static let graphMarker = Color(nsColor: .textBackgroundColor)
 }
 
 extension ProcessMetric {
     /// The subsystem hue this metric shares with its card and its graph, so a
     /// process list ranked by GPU reads as the same thing as the GPU trace.
-    var accent: Color {
+    public var accent: Color {
         switch self {
         case .cpu: return Palette.cpu
         case .memory: return Palette.memory
@@ -142,9 +142,9 @@ extension ProcessMetric {
 /// Rest is the caller's neutral rather than a hue of its own, for the reason
 /// `Severity.color` returns nil for `.calm`: an idle menu bar should look like
 /// the rest of the menu bar.
-enum LoadInk {
+public enum LoadInk {
     /// The load below which the field is drawn in the neutral, untouched.
-    static let threshold = 0.70
+    public static let threshold = 0.70
 
     /// Hue stops above the threshold, ascending. The threshold stop is the
     /// neutral passed in.
@@ -194,7 +194,7 @@ enum LoadInk {
     ///   compound at every crossing. Below the threshold this is the neutral
     ///   object itself, not a copy through RGB space, so the field matches the
     ///   readouts beside it to the bit.
-    static func color(forLoad load: Double, neutral: NSColor) -> NSColor {
+    public static func color(forLoad load: Double, neutral: NSColor) -> NSColor {
         let clamped = min(1, max(0, load))
         guard clamped > threshold else { return neutral }
 
@@ -222,15 +222,15 @@ enum LoadInk {
     }
 }
 
-enum Metrics {
+public enum Metrics {
     /// Sized for the headline cards to sit two abreast. Each column keeps
     /// about 242 points of content, which is the narrowest a four-tile stat
     /// row — the thermal card's CPU/GPU/Peak/Battery run — reads at without
     /// the values crowding their labels.
-    static let dashboardWidth: CGFloat = 560
-    static let cardCorner: CGFloat = 11
-    static let cardPadding: CGFloat = 11
-    static let sectionSpacing: CGFloat = 9
+    public static let dashboardWidth: CGFloat = 560
+    public static let cardCorner: CGFloat = 11
+    public static let cardPadding: CGFloat = 11
+    public static let sectionSpacing: CGFloat = 9
 
     /// The panel's preferred height, clipped to what the screen can actually
     /// show. A popover taller than the display does not scroll — it is simply
@@ -241,7 +241,7 @@ enum Metrics {
     /// every display, and `NSScreen.main` is whichever one holds the key
     /// window — rarely the one that was clicked, for an accessory app.
     @MainActor
-    static func dashboardHeight(on screen: NSScreen?) -> CGFloat {
+    public static func dashboardHeight(on screen: NSScreen?) -> CGFloat {
         let available = (screen ?? NSScreen.main)?.visibleFrame.height ?? 800
         return min(640, max(360, available - 40))
     }
@@ -251,7 +251,7 @@ enum Metrics {
 
 extension View {
     /// Small uppercase section label.
-    func sectionCaption() -> some View {
+    public func sectionCaption() -> some View {
         font(.system(size: 9.5, weight: .semibold))
             .kerning(0.6)
             .textCase(.uppercase)
@@ -259,23 +259,36 @@ extension View {
     }
 
     /// Numeric readout. Monospaced digits stop values jittering as they change.
-    func metricValue(size: CGFloat = 12, weight: Font.Weight = .medium) -> some View {
+    public func metricValue(size: CGFloat = 12, weight: Font.Weight = .medium) -> some View {
         font(.system(size: size, weight: weight, design: .rounded))
             .monospacedDigit()
     }
 
-    func metricLabel() -> some View {
+    public func metricLabel() -> some View {
         font(.system(size: 10.5))
             .foregroundStyle(.secondary)
     }
 }
 
 /// Rounded container used for every section of the dashboard.
-struct Card<Content: View>: View {
-    var accent: Color
-    var title: String
-    var symbol: String
-    var trailing: String?
+public struct Card<Content: View>: View {
+    public init(
+        accent: Color, title: String, symbol: String,
+        trailing: String? = nil, headline: String? = nil,
+        @ViewBuilder content: () -> Content
+    ) {
+        self.accent = accent
+        self.title = title
+        self.symbol = symbol
+        self.trailing = trailing
+        self.headline = headline
+        self.content = content()
+    }
+
+    public var accent: Color
+    public var title: String
+    public var symbol: String
+    public var trailing: String?
     /// The one number the card exists to report, drawn large and in the card's
     /// own hue on a tinted chip.
     ///
@@ -283,10 +296,10 @@ struct Card<Content: View>: View {
     /// restating a number that is also printed inside it, next to a graph of
     /// the same series — so the number moved to the card it belongs to and got
     /// big enough to read from across the desk.
-    var headline: String?
-    @ViewBuilder var content: Content
+    public var headline: String?
+    @ViewBuilder public var content: Content
 
-    var body: some View {
+    public var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 5) {
                 Image(systemName: symbol)

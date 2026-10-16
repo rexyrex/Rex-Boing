@@ -18,25 +18,42 @@ private final class SizeBox {
 /// lives in the eighth would undo that for no gain. Absent — outside the
 /// dashboard — the graphs are inert, which is the right default for a trace
 /// with nothing behind it.
-struct InspectGraphAction: Sendable {
-    var handler: (@MainActor @Sendable (ProcessMetric, Date) -> Void)?
+public struct InspectGraphAction: Sendable {
+    public init(handler: (@MainActor @Sendable (ProcessMetric, Date) -> Void)?) {
+        self.handler = handler
+    }
 
-    var isAvailable: Bool { handler != nil }
+    public var handler: (@MainActor @Sendable (ProcessMetric, Date) -> Void)?
+
+    public var isAvailable: Bool { handler != nil }
 
     @MainActor
-    func callAsFunction(_ metric: ProcessMetric, at date: Date) {
+    public func callAsFunction(_ metric: ProcessMetric, at date: Date) {
         handler?(metric, date)
     }
 }
 
 private struct InspectGraphKey: EnvironmentKey {
-    static let defaultValue = InspectGraphAction(handler: nil)
+    public static let defaultValue = InspectGraphAction(handler: nil)
 }
 
 extension EnvironmentValues {
-    var inspectGraph: InspectGraphAction {
+    public var inspectGraph: InspectGraphAction {
         get { self[InspectGraphKey.self] }
         set { self[InspectGraphKey.self] = newValue }
+    }
+}
+
+/// What the cards call the machine they describe: "Mac" in Rex Boing, and
+/// whatever fits in Rex Boing Remote, where it may be a Linux box or a PC.
+private struct MachineNounKey: EnvironmentKey {
+    public static let defaultValue = "Mac"
+}
+
+extension EnvironmentValues {
+    public var machineNoun: String {
+        get { self[MachineNounKey.self] }
+        set { self[MachineNounKey.self] = newValue }
     }
 }
 
@@ -52,22 +69,38 @@ extension EnvironmentValues {
 /// at this size — a couple of hundred points wide, forty tall, on a card the
 /// user glances at — the shape is the whole point. Filling it makes the trace a
 /// silhouette that reads at arm's length.
-struct Sparkline: View {
-    var values: [Double]
-    var accent: Color
+public struct Sparkline: View {
+    public init(
+        values: [Double], accent: Color, ceiling: Double? = 1, lineWidth: CGFloat = 1.4,
+        scaleCaption: String? = nil, timestamps: [Date] = [],
+        format: @escaping (Double) -> String = { Format.percent($0, decimals: 1) },
+        inspectorMetric: ProcessMetric? = nil
+    ) {
+        self.values = values
+        self.accent = accent
+        self.ceiling = ceiling
+        self.lineWidth = lineWidth
+        self.scaleCaption = scaleCaption
+        self.timestamps = timestamps
+        self.format = format
+        self.inspectorMetric = inspectorMetric
+    }
+
+    public var values: [Double]
+    public var accent: Color
     /// Fixed upper bound; `nil` autoscales to the visible peak.
-    var ceiling: Double? = 1
-    var lineWidth: CGFloat = 1.4
+    public var ceiling: Double? = 1
+    public var lineWidth: CGFloat = 1.4
     /// Printed in the top-left corner. An autoscaled graph is unreadable
     /// without it — the same shape means 2 KB/s or 2 GB/s.
-    var scaleCaption: String?
+    public var scaleCaption: String?
     /// When each of `values` was sampled, same order and length. Supplied, the
     /// hover readout can say which second the pointer is over as well as what
     /// the reading was.
-    var timestamps: [Date] = []
+    public var timestamps: [Date] = []
     /// Renders a sample for the hover readout. Defaults to a percentage
     /// because most series here are one.
-    var format: (Double) -> String = { Format.percent($0, decimals: 1) }
+    public var format: (Double) -> String = { Format.percent($0, decimals: 1) }
     /// Which resource the process breakdown should open on. Supplying it is
     /// what makes the graph clickable.
     ///
@@ -76,7 +109,7 @@ struct Sparkline: View {
     /// graphs open on CPU. That is not a fudge: "what was running when the
     /// network went wild" is the question being asked, and the breakdown
     /// window lets the user switch resource from there anyway.
-    var inspectorMetric: ProcessMetric?
+    public var inspectorMetric: ProcessMetric?
 
     @Environment(\.inspectGraph) private var inspectGraph
 
@@ -100,7 +133,7 @@ struct Sparkline: View {
         return max(values.max() ?? 1, 0.0001)
     }
 
-    var body: some View {
+    public var body: some View {
         // `Canvas` rather than `GeometryReader` + shapes. The trace is pure
         // drawing with no child views, and routing it through a layout
         // container made every sample relayout the panel's whole view tree.
@@ -318,11 +351,16 @@ struct Sparkline: View {
 /// and fold the supporting detail behind this. Everything a card knows is still
 /// one click away; none of it is in the way of the reading that is taken twenty
 /// times a day.
-struct ExpandButton: View {
-    var title: String
-    @Binding var expanded: Bool
+public struct ExpandButton: View {
+    public init(title: String, expanded: Binding<Bool>) {
+        self.title = title
+        self._expanded = expanded
+    }
 
-    var body: some View {
+    public var title: String
+    @Binding public var expanded: Bool
+
+    public var body: some View {
         Button {
             withAnimation(.easeInOut(duration: 0.18)) { expanded.toggle() }
         } label: {
@@ -344,22 +382,34 @@ struct ExpandButton: View {
 
 // MARK: - Segmented bar
 
-struct BarSegment: Identifiable {
-    var id: String { label }
-    var label: String
-    var bytes: UInt64
-    var color: Color
+public struct BarSegment: Identifiable, Sendable {
+    public init(label: String, bytes: UInt64, color: Color) {
+        self.label = label
+        self.bytes = bytes
+        self.color = color
+    }
+
+    public var id: String { label }
+    public var label: String
+    public var bytes: UInt64
+    public var color: Color
 }
 
 /// Proportional stacked bar with a legend, used for the memory breakdown.
-struct SegmentedBar: View {
-    var segments: [BarSegment]
-    var total: UInt64
-    var showLegend: Bool = true
+public struct SegmentedBar: View {
+    public init(segments: [BarSegment], total: UInt64, showLegend: Bool = true) {
+        self.segments = segments
+        self.total = total
+        self.showLegend = showLegend
+    }
+
+    public var segments: [BarSegment]
+    public var total: UInt64
+    public var showLegend: Bool = true
 
     private var visible: [BarSegment] { segments.filter { $0.bytes > 0 } }
 
-    var body: some View {
+    public var body: some View {
         VStack(alignment: .leading, spacing: 7) {
             Canvas(opaque: false, rendersAsynchronously: false) { context, size in
                 context.clip(to: Path(roundedRect: CGRect(origin: .zero, size: size),
@@ -418,11 +468,16 @@ struct SegmentedBar: View {
 
 /// One bar per logical core, grouped by cluster. Efficiency and performance
 /// cores get different accents because their loads mean different things.
-struct CoreGrid: View {
-    var loads: [Double]
-    var kinds: [CoreKind]
+public struct CoreGrid: View {
+    public init(loads: [Double], kinds: [CoreKind]) {
+        self.loads = loads
+        self.kinds = kinds
+    }
 
-    var body: some View {
+    public var loads: [Double]
+    public var kinds: [CoreKind]
+
+    public var body: some View {
         HStack(alignment: .bottom, spacing: 3) {
             ForEach(Array(loads.enumerated()), id: \.offset) { index, load in
                 let kind = index < kinds.count ? kinds[index] : .unknown
@@ -455,13 +510,20 @@ struct CoreGrid: View {
 // MARK: - Rows
 
 /// Label on the left, value on the right — the workhorse row of the dashboard.
-struct StatRow: View {
-    var label: String
-    var value: String
-    var tint: Color?
-    var symbol: String?
+public struct StatRow: View {
+    public init(label: String, value: String, tint: Color? = nil, symbol: String? = nil) {
+        self.label = label
+        self.value = value
+        self.tint = tint
+        self.symbol = symbol
+    }
 
-    var body: some View {
+    public var label: String
+    public var value: String
+    public var tint: Color?
+    public var symbol: String?
+
+    public var body: some View {
         HStack(spacing: 5) {
             if let symbol {
                 Image(systemName: symbol)
@@ -479,12 +541,18 @@ struct StatRow: View {
 }
 
 /// Compact label-over-value pair, for dense multi-column blocks.
-struct StatTile: View {
-    var label: String
-    var value: String
-    var tint: Color?
+public struct StatTile: View {
+    public init(label: String, value: String, tint: Color? = nil) {
+        self.label = label
+        self.value = value
+        self.tint = tint
+    }
 
-    var body: some View {
+    public var label: String
+    public var value: String
+    public var tint: Color?
+
+    public var body: some View {
         VStack(alignment: .leading, spacing: 1) {
             Text(label)
                 .font(.system(size: 9))
@@ -498,12 +566,18 @@ struct StatTile: View {
 }
 
 /// Thin horizontal meter used for per-process rows and fan speeds.
-struct MiniBar: View {
-    var fraction: Double
-    var accent: Color
-    var height: CGFloat = 4
+public struct MiniBar: View {
+    public init(fraction: Double, accent: Color, height: CGFloat = 4) {
+        self.fraction = fraction
+        self.accent = accent
+        self.height = height
+    }
 
-    var body: some View {
+    public var fraction: Double
+    public var accent: Color
+    public var height: CGFloat = 4
+
+    public var body: some View {
         // Drawn rather than laid out. There is one of these on every process
         // row, every fan and three more besides, and a GeometryReader each
         // pulled the whole panel into a layout pass on every sample.

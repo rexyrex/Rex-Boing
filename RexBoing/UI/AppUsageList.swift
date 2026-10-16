@@ -4,16 +4,16 @@ import AppKit
 /// Time frames the process card can rank over besides Live. Bounded above by
 /// the ledger's retention — a day — and below by a span long enough that
 /// accumulated work says something the live rows do not.
-enum UsageWindow: Double, CaseIterable, Identifiable {
+public enum UsageWindow: Double, CaseIterable, Identifiable, Sendable {
     case fiveMinutes = 300
     case twentyMinutes = 1200
     case oneHour = 3600
     case sixHours = 21_600
     case day = 86_400
 
-    var id: Double { rawValue }
+    public var id: Double { rawValue }
 
-    var label: String {
+    public var label: String {
         switch self {
         case .fiveMinutes: return "5m"
         case .twentyMinutes: return "20m"
@@ -23,7 +23,7 @@ enum UsageWindow: Double, CaseIterable, Identifiable {
         }
     }
 
-    var spoken: String {
+    public var spoken: String {
         switch self {
         case .fiveMinutes: return "the last 5 minutes"
         case .twentyMinutes: return "the last 20 minutes"
@@ -41,15 +41,15 @@ enum UsageWindow: Double, CaseIterable, Identifiable {
 /// Work is shown as totals and window-averages: real joules, core-time,
 /// bytes moved. The rankings therefore favour sustained use over a lucky
 /// instant, which is the point of the windows.
-struct AppUsageList: View {
+public struct AppUsageList: View {
     /// The latest ledger answer, which may still be for the previous window
     /// for the instant after a switch — showing it beats flashing empty.
-    var report: AppUsageReport?
-    var window: UsageWindow
-    var metric: ProcessMetric
-    var rowCount: Int
+    public var report: AppUsageReport?
+    public var window: UsageWindow
+    public var metric: ProcessMetric
+    public var rowCount: Int
 
-    var body: some View {
+    public var body: some View {
         let ranked = rankedApps
         let scale = max(ranked.first?.value ?? 1, .leastNonzeroMagnitude)
 
@@ -154,23 +154,23 @@ struct AppUsageList: View {
 
 /// One ranked app, resolved once per render pass so row views compare cheaply.
 private struct RankedApp: Identifiable {
-    var id: String { attribution.key }
-    var attribution: AppAttribution
-    var totals: AppUsageTotals
-    var value: Double
-    var display: String
-    var covered: Double
+    public var id: String { attribution.key }
+    public var attribution: AppAttribution
+    public var totals: AppUsageTotals
+    public var value: Double
+    public var display: String
+    public var covered: Double
 }
 
 private struct AppUsageRowView: View {
-    var app: RankedApp
-    var windowLabel: String
-    var accent: Color
-    var fraction: Double
+    public var app: RankedApp
+    public var windowLabel: String
+    public var accent: Color
+    public var fraction: Double
 
     @State private var isHovering = false
 
-    var body: some View {
+    public var body: some View {
         HStack(spacing: 7) {
             Image(nsImage: AppUsageIconCache.shared.icon(for: app.attribution))
                 .resizable()
@@ -272,14 +272,14 @@ private struct AppUsageRowView: View {
 /// fresh sample. Keyed by anchor path, so the two caches never fight.
 @MainActor
 private final class AppUsageIconCache {
-    static let shared = AppUsageIconCache()
+    public static let shared = AppUsageIconCache()
 
     private var cache: [String: NSImage] = [:]
     private var order: [String] = []
     private let limit = 256
     private let fallback = NSWorkspace.shared.icon(for: .unixExecutable)
 
-    func icon(for attribution: AppAttribution) -> NSImage {
+    public func icon(for attribution: AppAttribution) -> NSImage {
         guard let anchor = attribution.bundlePath ?? attribution.executablePath else {
             return fallback
         }

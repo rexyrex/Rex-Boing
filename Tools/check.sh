@@ -20,12 +20,14 @@
 #            real process sampler, then micro-benchmarks
 #   metrics  every sampler against this machine: availability, finiteness,
 #            ranges and related counts (readings differ per Mac by design)
+#   wire     snapshots survive the Rex Boing Remote wire format both ways,
+#            and a Linux agent's sample decodes into the cards' model
 #   engine   the full engine against live samplers, without a status item
 #            and without touching preferences
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-PURE=(visual ink readout clock power)
+PURE=(visual ink readout clock power wire)
 LIVE=(ledger metrics engine)
 
 if [ $# -eq 0 ]; then
@@ -33,7 +35,7 @@ if [ $# -eq 0 ]; then
 elif [ "$1" = "--pure" ]; then
     CHECKS=("${PURE[@]}")
 elif [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
-    sed -n '2,24p' "$0"
+    sed -n '2,26p' "$0"
     exit 0
 else
     CHECKS=("$@")
@@ -51,26 +53,29 @@ sources_for() {
         visual)
             echo RexBoing/StatusBar/Visualizer.swift RexBoing/StatusBar/VisualCanvas.swift ;;
         ink)
-            echo RexBoing/UI/Theme.swift RexBoing/Metrics/Snapshot.swift \
+            echo RexBoing/UI/Theme.swift RexBoing/Metrics/Snapshot.swift RexBoing/Metrics/Wire.swift \
                  RexBoing/Metrics/Format.swift ;;
         readout)
             echo RexBoing/StatusBar/StatusBarRenderer.swift RexBoing/App/Preferences.swift \
                  RexBoing/StatusBar/Visualizer.swift RexBoing/App/LoginItem.swift \
                  RexBoing/Metrics/Format.swift ;;
         clock)
-            echo RexBoing/Metrics/Snapshot.swift RexBoing/Metrics/Format.swift \
+            echo RexBoing/Metrics/Snapshot.swift RexBoing/Metrics/Wire.swift RexBoing/Metrics/Format.swift \
                  RexBoing/Metrics/History.swift RexBoing/Metrics/ProcessHistory.swift \
                  RexBoing/Metrics/UsageLedger.swift ;;
         power)
-            echo RexBoing/Metrics/Snapshot.swift RexBoing/Metrics/Format.swift \
+            echo RexBoing/Metrics/Snapshot.swift RexBoing/Metrics/Wire.swift RexBoing/Metrics/Format.swift \
                  RexBoing/Metrics/Samplers/IOReportSampler.swift ;;
         ledger)
-            echo RexBoing/Metrics/Snapshot.swift RexBoing/Metrics/Format.swift \
+            echo RexBoing/Metrics/Snapshot.swift RexBoing/Metrics/Wire.swift RexBoing/Metrics/Format.swift \
                  RexBoing/Metrics/UsageLedger.swift \
                  RexBoing/Metrics/Samplers/ProcessSampler.swift ;;
         metrics)
-            echo RexBoing/Metrics/Snapshot.swift RexBoing/Metrics/Format.swift \
+            echo RexBoing/Metrics/Snapshot.swift RexBoing/Metrics/Wire.swift RexBoing/Metrics/Format.swift \
                  RexBoing/Metrics/UsageLedger.swift RexBoing/Metrics/Samplers/*.swift ;;
+        wire)
+            echo RexBoing/Metrics/Snapshot.swift RexBoing/Metrics/Wire.swift \
+                 RexBoing/Metrics/Format.swift ;;
         engine)
             find RexBoing -name '*.swift' ! -name RexBoingApp.swift | sort | tr '\n' ' ' ;;
         *)

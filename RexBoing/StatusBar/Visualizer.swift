@@ -18,7 +18,7 @@ import AppKit
 /// state, no random numbers — which means a frame can be reproduced exactly,
 /// off screen, in a test or a preview, and the same code that draws the menu
 /// bar draws the figures in the README.
-enum Visualizer: String, CaseIterable, Identifiable {
+public enum Visualizer: String, CaseIterable, Identifiable, Sendable, Codable {
     /// A chibi tyrannosaur at a gallop, ground streaming past.
     case rex
     /// The same tyrannosaur pointing up on the beat, down on the off-beat.
@@ -54,18 +54,18 @@ enum Visualizer: String, CaseIterable, Identifiable {
     case lift
 
     /// Shared by the menu bar, gallery and rendering checks.
-    static let canvasSize = CGSize(width: 36, height: 22)
+    public static let canvasSize = CGSize(width: 36, height: 22)
 
     /// The fewest drawn frames one cycle of the motion may be spread over.
     /// Below about this a cyclic motion aliases — a gallop appears to stall,
     /// or to run backwards — however cleanly each frame is drawn. Shared by
     /// the status item's pace clamp and the settings preview, so the preview
     /// cannot strobe at a pace the menu bar would never be allowed to run.
-    static let minimumFramesPerCycle: Double = 11
+    public static let minimumFramesPerCycle: Double = 11
 
-    var id: String { rawValue }
+    public var id: String { rawValue }
 
-    var name: String {
+    public var name: String {
         switch self {
         case .rex: return "Rex"
         case .disco: return "Disco"
@@ -86,7 +86,7 @@ enum Visualizer: String, CaseIterable, Identifiable {
         }
     }
 
-    var detail: String {
+    public var detail: String {
         switch self {
         case .rex: return "A tyrannosaur at a gallop. A lazy trot at rest; a flat-out, worried sprint under load."
         case .disco: return "The same tyrannosaur pointing up on the beat, down on the off-beat. The tempo is the machine's."
@@ -190,7 +190,7 @@ enum Visualizer: String, CaseIterable, Identifiable {
     /// `AnimationQuality.paceFactor`). The idle pace is a floor of legibility
     /// — a creature moving once every few seconds reads as broken, whatever
     /// the preset — so only the ceiling moves with what the preset can show.
-    func rate(forLoad load: Double, speedFactor: Double = 1) -> Double {
+    public func rate(forLoad load: Double, speedFactor: Double = 1) -> Double {
         let clamped = min(1, max(0, load))
         let top = max(idleRate, maxRate * speedFactor)
         return idleRate + (top - idleRate) * clamped
@@ -204,7 +204,7 @@ enum Visualizer: String, CaseIterable, Identifiable {
     /// permanent still pose held the default character mid-squint. At 0.40
     /// every `time × blink speed` product sits in 0.064...0.100, all past the
     /// 0.06 window, eyes open across the cast.
-    static let restingTime = 0.40
+    public static let restingTime = 0.40
 
     // MARK: - Drawing
 
@@ -228,7 +228,7 @@ enum Visualizer: String, CaseIterable, Identifiable {
     ///     *within* the drawing, and the label colour's own transparency is
     ///     applied to the layer, so translucent parts stay translucent against
     ///     each other rather than compounding at every crossing.
-    func draw(
+    public func draw(
         in context: CGContext, rect: NSRect, time: Double, load: Double, color: NSColor
     ) {
         let energy = min(1, max(0, load))

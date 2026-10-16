@@ -3,23 +3,23 @@ import Foundation
 /// Fixed-capacity ring buffer backing the sparklines. Appending is O(1) and
 /// never allocates once the buffer has filled, which matters because the
 /// dashboard reads these at up to 4 Hz.
-struct RingBuffer {
+public struct RingBuffer: Sendable {
     private(set) var storage: [Double]
     /// When each slot of `storage` was recorded, as a reference-date offset.
     /// Stored as a plain `Double` rather than a `Date` so a full buffer is two
     /// flat allocations that never need boxing on the sampler's hot path.
     private var times: [TimeInterval]
     private var head: Int = 0
-    private(set) var count: Int = 0
-    let capacity: Int
+    public private(set) var count: Int = 0
+    public let capacity: Int
 
-    init(capacity: Int) {
+    public init(capacity: Int) {
         self.capacity = max(1, capacity)
         self.storage = Array(repeating: 0, count: self.capacity)
         self.times = Array(repeating: 0, count: self.capacity)
     }
 
-    mutating func append(_ value: Double, at date: Date) {
+    public mutating func append(_ value: Double, at date: Date) {
         storage[head] = value
         times[head] = date.timeIntervalSinceReferenceDate
         head = (head + 1) % capacity
@@ -27,12 +27,12 @@ struct RingBuffer {
     }
 
     /// Oldest-to-newest values.
-    var values: [Double] { ordered(storage) }
+    public var values: [Double] { ordered(storage) }
 
     /// When each of `values` was sampled, same order and same length. Series
     /// that skip samples — the temperatures, when no sensor answered — would
     /// otherwise have no way to say which second a point belongs to.
-    var timestamps: [Date] {
+    public var timestamps: [Date] {
         ordered(times, transform: Date.init(timeIntervalSinceReferenceDate:))
     }
 
@@ -65,41 +65,43 @@ struct RingBuffer {
         return result
     }
 
-    var latest: Double { count > 0 ? storage[(head + capacity - 1) % capacity] : 0 }
+    public var latest: Double { count > 0 ? storage[(head + capacity - 1) % capacity] : 0 }
 
     /// Peak over the window, without materialising the ordered array.
-    var maximum: Double {
+    public var maximum: Double {
         guard count > 0 else { return 0 }
         return storage.prefix(count == capacity ? capacity : count).max() ?? 0
     }
 }
 
 /// Rolling history for every series the dashboard graphs.
-struct MetricsHistory {
-    static let capacity = 90
+public struct MetricsHistory: Sendable {
+    public static let capacity = 90
 
-    var cpu = RingBuffer(capacity: capacity)
-    var cpuUser = RingBuffer(capacity: capacity)
-    var cpuSystem = RingBuffer(capacity: capacity)
-    var gpu = RingBuffer(capacity: capacity)
-    var memory = RingBuffer(capacity: capacity)
-    var swap = RingBuffer(capacity: capacity)
-    var cpuTemp = RingBuffer(capacity: capacity)
-    var gpuTemp = RingBuffer(capacity: capacity)
-    var power = RingBuffer(capacity: capacity)
+    public init() {}
+
+    public var cpu = RingBuffer(capacity: capacity)
+    public var cpuUser = RingBuffer(capacity: capacity)
+    public var cpuSystem = RingBuffer(capacity: capacity)
+    public var gpu = RingBuffer(capacity: capacity)
+    public var memory = RingBuffer(capacity: capacity)
+    public var swap = RingBuffer(capacity: capacity)
+    public var cpuTemp = RingBuffer(capacity: capacity)
+    public var gpuTemp = RingBuffer(capacity: capacity)
+    public var power = RingBuffer(capacity: capacity)
     /// Average active clock per cluster, MHz. Empty where IOReport did not
     /// resolve — Intel Macs — and the processor card hides the traces. What
     /// these buy is throttling made visible: a clock that sags while the die
     /// temperature peaks is evidence of the thing the OS pressure state only
     /// asserts.
-    var eClock = RingBuffer(capacity: capacity)
-    var pClock = RingBuffer(capacity: capacity)
-    var networkRx = RingBuffer(capacity: capacity)
-    var networkTx = RingBuffer(capacity: capacity)
-    var diskRead = RingBuffer(capacity: capacity)
-    var diskWrite = RingBuffer(capacity: capacity)
+    public var eClock = RingBuffer(capacity: capacity)
+    public var pClock = RingBuffer(capacity: capacity)
+    public var networkRx = RingBuffer(capacity: capacity)
+    public var networkTx = RingBuffer(capacity: capacity)
+    public var diskRead = RingBuffer(capacity: capacity)
+    public var diskWrite = RingBuffer(capacity: capacity)
 
-    mutating func record(_ snapshot: Snapshot) {
+    public mutating func record(_ snapshot: Snapshot) {
         let now = snapshot.timestamp
         cpu.append(snapshot.cpu.total, at: now)
         cpuUser.append(snapshot.cpu.user, at: now)

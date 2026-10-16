@@ -139,10 +139,10 @@ final class CPUSampler {
         Double(current &- previous)
     }
 
-    private func loadAverage() -> (one: Double, five: Double, fifteen: Double) {
+    private func loadAverage() -> LoadAverage {
         var values = [Double](repeating: 0, count: 3)
-        guard getloadavg(&values, 3) == 3 else { return (0, 0, 0) }
-        return (values[0], values[1], values[2])
+        guard getloadavg(&values, 3) == 3 else { return LoadAverage() }
+        return LoadAverage(one: values[0], five: values[1], fifteen: values[2])
     }
 
     /// `PROCESSOR_SET_LOAD_INFO` is a system aggregate, so it includes the

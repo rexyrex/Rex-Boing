@@ -6,26 +6,26 @@ import Foundation
 /// it: per-process CPU is a percentage of *one* core and routinely exceeds 100,
 /// while the system figure is a fraction of all of them. The total has to be
 /// recorded, not derived.
-struct SystemTotals {
+public struct SystemTotals: Sendable {
     /// 0...1 across all cores.
-    var cpuFraction: Double = 0
+    public var cpuFraction: Double = 0
     /// 0...1 device utilisation, meaningful only when `gpuAvailable`.
-    var gpuFraction: Double = 0
-    var gpuAvailable: Bool = false
-    var memoryFraction: Double = 0
-    var memoryUsedBytes: UInt64 = 0
-    var memoryTotalBytes: UInt64 = 0
+    public var gpuFraction: Double = 0
+    public var gpuAvailable: Bool = false
+    public var memoryFraction: Double = 0
+    public var memoryUsedBytes: UInt64 = 0
+    public var memoryTotalBytes: UInt64 = 0
     /// Package draw where the SoC reports it, otherwise system draw at the
     /// battery. `nil` on hardware that publishes neither.
-    var watts: Double?
+    public var watts: Double?
     /// Whole-machine disk throughput at the same instant, from the storage
     /// drivers — the total the per-process disk column is a share of.
-    var diskReadBytesPerSecond: Double = 0
-    var diskWriteBytesPerSecond: Double = 0
+    public var diskReadBytesPerSecond: Double = 0
+    public var diskWriteBytesPerSecond: Double = 0
 
-    init() {}
+    public init() {}
 
-    init(_ snapshot: Snapshot) {
+    public init(_ snapshot: Snapshot) {
         cpuFraction = snapshot.cpu.total
         gpuFraction = snapshot.gpu.utilization
         gpuAvailable = snapshot.gpu.available
@@ -40,23 +40,23 @@ struct SystemTotals {
 
 /// One instant's ranked process table, kept so the inspector can answer what
 /// was running when — not just what is running now.
-struct ProcessSample: Identifiable {
-    var id: Date { timestamp }
-    var timestamp: Date
+public struct ProcessSample: Identifiable, Sendable {
+    public var id: Date { timestamp }
+    public var timestamp: Date
     /// The window the deltas in `rows` were measured over. Worth showing: a
     /// reading averaged over six idle seconds means something different from
     /// one averaged over the second you were watching.
-    var interval: TimeInterval
+    public var interval: TimeInterval
     /// Every process that placed in any of the rankings, CPU-first.
-    var rows: [ProcessRow]
+    public var rows: [ProcessRow]
     /// False when the IORegistry walk found no Metal clients, so the GPU column
     /// can say "unavailable" rather than imply everything was idle.
-    var gpuAttributionAvailable: Bool
+    public var gpuAttributionAvailable: Bool
     /// Total process count at that instant, for the window's subtitle.
-    var processCount: Int
+    public var processCount: Int
     /// System-wide readings at the same instant, so the window can lead with
     /// the total the rows below it are shares of.
-    var totals: SystemTotals
+    public var totals: SystemTotals
 }
 
 /// Rolling window of ranked process tables, parallel to `MetricsHistory`.
@@ -72,15 +72,17 @@ struct ProcessSample: Identifiable {
 /// sample and, until now, thrown away a tick later. What is added here is
 /// retaining the ranked rows that pass had already produced.
 @MainActor
-final class ProcessHistory: ObservableObject {
+public final class ProcessHistory: ObservableObject {
     /// Matched to `MetricsHistory.capacity` so the inspector can reach back at
     /// least as far as the graph that opens it. In practice it reaches much
     /// further: while the dashboard is closed the process table is sampled
     /// roughly every six seconds rather than every tick, so the same number of slots
     /// covers minutes rather than a minute and a half.
-    static let capacity = MetricsHistory.capacity
+    public static let capacity = MetricsHistory.capacity
 
-    @Published private(set) var samples: [ProcessSample] = []
+    @Published public private(set) var samples: [ProcessSample] = []
+
+    public init() {}
 
     /// A window longer than this is treated as spanning a sleep or a clock
     /// step. The background cadence is roughly six seconds, so anything approaching a
@@ -92,7 +94,7 @@ final class ProcessHistory: ObservableObject {
     /// Takes the whole snapshot rather than just its process table, because the
     /// system-wide totals belong to the same instant and cannot be recovered
     /// from the rows afterwards.
-    func record(_ snapshot: Snapshot) {
+    public func record(_ snapshot: Snapshot) {
         let metrics = snapshot.processes
 
         // A fresh table dated *before* the last recorded one can only mean the
@@ -142,7 +144,7 @@ final class ProcessHistory: ObservableObject {
     /// seconds — the graph is sampled several times more often than the process
     /// table is when nobody is watching — and a window that silently showed the
     /// wrong instant would be worse than one that admits which instant it has.
-    func nearest(to date: Date) -> (index: Int, sample: ProcessSample, offset: TimeInterval)? {
+    public func nearest(to date: Date) -> (index: Int, sample: ProcessSample, offset: TimeInterval)? {
         guard !samples.isEmpty else { return nil }
 
         // Timestamps are appended in order, so this is a binary search for the

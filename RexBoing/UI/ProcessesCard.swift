@@ -4,15 +4,15 @@ import Darwin
 
 /// What the process card ranks over: the newest process table, or the usage
 /// ledger's account of a trailing window.
-enum ProcessSpan: Hashable, Identifiable {
+public enum ProcessSpan: Hashable, Identifiable, Sendable {
     case live
     case window(UsageWindow)
 
-    static let allCases: [ProcessSpan] = [.live] + UsageWindow.allCases.map { .window($0) }
+    public static let allCases: [ProcessSpan] = [.live] + UsageWindow.allCases.map { .window($0) }
 
-    var id: Self { self }
+    public var id: Self { self }
 
-    var label: String {
+    public var label: String {
         switch self {
         case .live: return "Live"
         case .window(let window): return window.label
@@ -33,19 +33,27 @@ enum ProcessSpan: Hashable, Identifiable {
 /// is not something menu bar monitors usually show, and the disk ranking is
 /// the fastest answer to "what is hammering the SSD" — real device traffic,
 /// not page-cache hits.
-struct ProcessesCard: View {
-    /// A plain reference for issuing ledger queries — deliberately not
-    /// observed. Refresh rides on the snapshot, handed down by value like
-    /// every other card's data, so this card observes nothing either.
-    let engine: MetricsEngine
-    var snapshot: Snapshot
-    var rowCount: Int
+public struct ProcessesCard: View {
+    /// How to ask the usage ledger about a trailing window — deliberately not
+    /// an observed object. Refresh rides on the snapshot, handed down by value
+    /// like every other card's data, so this card observes nothing either.
+    /// Absent where no ledger exists (a remote machine), and then the card
+    /// shows the live table alone.
+    public var usage: AppUsageQuery?
+    public var snapshot: Snapshot
+    public var rowCount: Int
+
+    public init(usage: AppUsageQuery?, snapshot: Snapshot, rowCount: Int) {
+        self.usage = usage
+        self.snapshot = snapshot
+        self.rowCount = rowCount
+    }
 
     @State private var metric: ProcessMetric = .cpu
     @State private var span: ProcessSpan = .live
     @State private var report: AppUsageReport?
 
-    var body: some View {
+    public var body: some View {
         Card(
             accent: metric.accent, title: "Top Processes", symbol: "list.bullet",
             trailing: trailing
@@ -60,15 +68,17 @@ struct ProcessesCard: View {
             .controlSize(.small)
             .accessibilityLabel("Rank by")
 
-            Picker("Over", selection: $span.animation(.easeInOut(duration: 0.15))) {
-                ForEach(ProcessSpan.allCases) { option in
-                    Text(option.label).tag(option)
+            if usage != nil {
+                Picker("Over", selection: $span.animation(.easeInOut(duration: 0.15))) {
+                    ForEach(ProcessSpan.allCases) { option in
+                        Text(option.label).tag(option)
+                    }
                 }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .controlSize(.small)
+                .accessibilityLabel("Time frame")
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .controlSize(.small)
-            .accessibilityLabel("Time frame")
 
             switch span {
             case .live:
@@ -89,8 +99,8 @@ struct ProcessesCard: View {
     /// Live reads the snapshot it was handed; only a window needs the ledger,
     /// so nothing is asked of it while Live is on show.
     private func query() {
-        guard case .window(let window) = span else { return }
-        engine.appUsage(over: window.rawValue) { report = $0 }
+        guard case .window(let window) = span, let usage else { return }
+        usage.run(window.rawValue) { report = $0 }
     }
 
     private var trailing: String? {
@@ -104,13 +114,53 @@ struct ProcessesCard: View {
     }
 }
 
+/// How the process card queries the usage ledger: the trailing window in
+/// seconds, and a completion delivered on the main actor.
+public struct AppUsageQuery {
+    public var run: @MainActor (
+        _ window: TimeInterval,
+        _ completion: @escaping @MainActor @Sendable (AppUsageReport) -> Void
+    ) -> Void
+
+    public init(
+        _ run: @escaping @MainActor (
+            _ window: TimeInterval,
+            _ completion: @escaping @MainActor @Sendable (AppUsageReport) -> Void
+        ) -> Void
+    ) {
+        self.run = run
+    }
+}
+
+/// Whether the processes on screen belong to this Mac. Rows from another
+/// machine can be copied, but not revealed in Finder, signalled or given this
+/// Mac's icon for a path that only happens to exist here too.
+public struct ProcessControl: Sendable {
+    public var isLocal: Bool = true
+
+    public init(isLocal: Bool = true) {
+        self.isLocal = isLocal
+    }
+}
+
+private struct ProcessControlKey: EnvironmentKey {
+    public static let defaultValue = ProcessControl()
+}
+
+extension EnvironmentValues {
+    public var processControl: ProcessControl {
+        get { self[ProcessControlKey.self] }
+        set { self[ProcessControlKey.self] = newValue }
+    }
+}
+
 /// The newest process table, ranked.
 private struct LiveProcessList: View {
-    var processes: ProcessMetrics
-    var metric: ProcessMetric
-    var rowCount: Int
+    public var processes: ProcessMetrics
+    public var metric: ProcessMetric
+    public var rowCount: Int
 
-    var body: some View {
+    public var body: some View {
         // Ranking happens on the sampler queue, so this is a slice rather
         // than a sort, resolved once here and handed down — reading it from
         // the body per row is what made it expensive in the first place.
@@ -146,14 +196,14 @@ private struct LiveProcessList: View {
 }
 
 private struct ProcessRowView: View {
-    var row: ProcessRow
-    var metric: ProcessMetric
-    var accent: Color
-    var fraction: Double
+    public var row: ProcessRow
+    public var metric: ProcessMetric
+    public var accent: Color
+    public var fraction: Double
 
     @State private var isHovering = false
 
-    var body: some View {
+    public var body: some View {
         HStack(spacing: 7) {
             ProcessIcon(row: row)
                 .frame(width: 15, height: 15)
@@ -197,7 +247,12 @@ private struct ProcessRowView: View {
         if row.wakeupsPerSecond >= 0.05 {
             text += String(format: "\n%.1f wakeups/s", row.wakeupsPerSecond)
         }
-        if let path = row.executablePath { text += "\n\(path)" }
+        if let user = row.user { text += "\nuser: \(user)" }
+        if let command = row.commandLine, !command.isEmpty {
+            text += "\n\(command)"
+        } else if let path = row.executablePath {
+            text += "\n\(path)"
+        }
         return text
     }
 }
@@ -205,24 +260,38 @@ private struct ProcessRowView: View {
 /// Right-click actions. Quitting is offered because the whole reason to look at
 /// this list is usually to find something to stop, and bouncing out to Activity
 /// Monitor to do it is a poor ending.
-struct ProcessActions: View {
-    var row: ProcessRow
+public struct ProcessActions: View {
+    public var row: ProcessRow
 
-    var body: some View {
+    @Environment(\.processControl) private var control
+
+    public init(row: ProcessRow) {
+        self.row = row
+    }
+
+    public var body: some View {
         Button("Copy Process Name") { copy(row.name) }
         Button("Copy PID") { copy("\(row.pid)") }
+
+        if let command = row.commandLine, !command.isEmpty {
+            Button("Copy Command Line") { copy(command) }
+        }
 
         if let path = row.executablePath {
             Divider()
             Button("Copy Path") { copy(path) }
-            Button("Reveal in Finder") {
-                NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
+            if control.isLocal {
+                Button("Reveal in Finder") {
+                    NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
+                }
             }
         }
 
-        Divider()
-        Button("Quit") { terminate(force: false) }
-        Button("Force Quit") { terminate(force: true) }
+        if control.isLocal {
+            Divider()
+            Button("Quit") { terminate(force: false) }
+            Button("Force Quit") { terminate(force: true) }
+        }
     }
 
     private func copy(_ string: String) {
@@ -309,11 +378,13 @@ struct ProcessActions: View {
 ///
 /// `NSWorkspace.icon(forFile:)` hits the disk, so results are memoised — the
 /// list re-renders several times a second while the dashboard is open.
-struct ProcessIcon: View {
-    var row: ProcessRow
+public struct ProcessIcon: View {
+    public var row: ProcessRow
 
-    var body: some View {
-        Image(nsImage: IconCache.shared.icon(for: row))
+    @Environment(\.processControl) private var control
+
+    public var body: some View {
+        Image(nsImage: control.isLocal ? IconCache.shared.icon(for: row) : IconCache.shared.genericIcon)
             .resizable()
             .interpolation(.high)
             .aspectRatio(contentMode: .fit)
@@ -323,14 +394,16 @@ struct ProcessIcon: View {
 
 @MainActor
 private final class IconCache {
-    static let shared = IconCache()
+    public static let shared = IconCache()
 
     private var cache: [String: NSImage] = [:]
     private var order: [String] = []
     private let limit = 256
     private let fallback = NSWorkspace.shared.icon(for: .unixExecutable)
 
-    func icon(for row: ProcessRow) -> NSImage {
+    public var genericIcon: NSImage { fallback }
+
+    public func icon(for row: ProcessRow) -> NSImage {
         guard let path = row.executablePath else { return fallback }
         if let cached = cache[path] { return cached }
 

@@ -3,6 +3,8 @@ RexBoing.xcodeproj/
 
 # Build output
 .build*/
+.swiftpm/
+Package.resolved
 dist/
 DerivedData/
 

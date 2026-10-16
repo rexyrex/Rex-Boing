@@ -468,19 +468,20 @@ preferences domain.
 
 ### Checks
 
-There is no test target; instead `Tools/` holds eight small programs that
+There is no test target; instead `Tools/` holds nine small programs that
 compile against the app's own source files and exercise them headlessly, and
 one script that runs them all:
 
 ```bash
 Tools/check.sh          # everything
 Tools/check.sh --pure   # only the checks that never read live hardware (what CI runs)
-Tools/check.sh visual   # one by name: visual ink readout clock power ledger metrics engine
+Tools/check.sh visual   # one by name: visual ink readout clock power wire ledger metrics engine
 ```
 
-Five are deterministic — the drawing path, the colour ramp, the readout
-widths, the history buffers and ledger against a synthetic timeline, and the
-energy meter against synthetic publication schedules — and
+Six are deterministic — the drawing path, the colour ramp, the readout
+widths, the history buffers and ledger against a synthetic timeline, the
+energy meter against synthetic publication schedules, and the Rex Boing Remote
+wire format in both directions — and
 must pass everywhere. The other three sample the machine they run on, so their
 readings differ per Mac by design; what they assert is availability, finiteness,
 ranges and internally consistent counts. Run the whole set before opening a
@@ -543,6 +544,14 @@ cp notarize.env.example notarize.env   # then fill in your Key ID, Issuer ID and
 ./package.sh
 ```
 
+## Watching other machines
+
+[Rex Boing Remote](https://github.com/rexyrex/Rex-Boing-Remote) is a separate
+app that puts your Linux, macOS and Windows servers in the menu bar the same
+way, over SSH. It is separate on purpose: Rex Boing makes no network
+connections, and keeping the SSH code out of this app and this repository is
+what keeps that easy to check.
+
 ## Notes
 
 - Right-click the item (or ⌃-click) for a menu: the character gallery with
@@ -555,6 +564,17 @@ cp notarize.env.example notarize.env   # then fill in your Key ID, Issuer ID and
   reports statistics. Nothing is faked.
 - Reduce Motion is honoured — the visualiser holds a still frame.
 - The animation pauses while the display is asleep.
+
+### RexBoingKit
+
+The snapshot model, the samplers, the dashboard cards and the menu bar
+characters are also a Swift package, `RexBoingKit`, described by
+`Package.swift` at the root of this repository. Rex Boing itself does not
+build through it — the Xcode project compiles the same files straight into the
+app — but [Rex Boing Remote](https://github.com/rexyrex/Rex-Boing-Remote)
+depends on it by release tag, so the remote dashboards are drawn by this code
+too. The package contains no networking code, and neither does anything else
+here.
 
 ## Layout
 

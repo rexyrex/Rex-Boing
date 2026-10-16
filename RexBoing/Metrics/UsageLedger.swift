@@ -8,29 +8,29 @@ import Foundation
 /// bare process name — which is all a GPU-only row (another user's process,
 /// read off the IORegistry) has to offer. Keys carry a tier prefix so a name
 /// can never collide with a path.
-struct AppAttribution: Hashable, Sendable {
-    var key: String
-    var displayName: String
+public struct AppAttribution: Hashable, Sendable {
+    public var key: String
+    public var displayName: String
     /// Outermost bundle when known — the icon and Finder anchor.
-    var bundlePath: String?
+    public var bundlePath: String?
     /// A representative member executable, for rows without a bundle.
-    var executablePath: String?
+    public var executablePath: String?
 }
 
 /// One app's work over one sample window, pre-aggregated across its member
 /// processes by the sampler.
-struct AppWorkDelta: Sendable {
-    var attribution: AppAttribution
-    var cpuNanos: UInt64 = 0
-    var energyNanojoules: UInt64 = 0
-    var gpuNanos: UInt64 = 0
-    var diskReadBytes: UInt64 = 0
-    var diskWriteBytes: UInt64 = 0
-    var wakeups: UInt64 = 0
+public struct AppWorkDelta: Sendable {
+    public var attribution: AppAttribution
+    public var cpuNanos: UInt64 = 0
+    public var energyNanojoules: UInt64 = 0
+    public var gpuNanos: UInt64 = 0
+    public var diskReadBytes: UInt64 = 0
+    public var diskWriteBytes: UInt64 = 0
+    public var wakeups: UInt64 = 0
     /// Instantaneous physical footprint summed over member processes — a
     /// gauge, unlike everything above, so the ledger integrates it over time
     /// rather than summing it across samples.
-    var memoryBytes: UInt64 = 0
+    public var memoryBytes: UInt64 = 0
 
     /// Whether this sample earns a ledger entry.
     ///
@@ -41,7 +41,7 @@ struct AppWorkDelta: Sendable {
     /// six-second sample is ~0.02% of a core. Wakeups deliberately grant no
     /// entry of their own: nearly every process has a few, and they are kept
     /// as colour for rows that qualified on real work.
-    var isMeasurable: Bool {
+    public var isMeasurable: Bool {
         cpuNanos >= 1_000_000
             || energyNanojoules >= 1_000_000
             || gpuNanos >= 1_000_000
@@ -51,19 +51,19 @@ struct AppWorkDelta: Sendable {
 }
 
 /// One app's accumulated work over a span.
-struct AppUsageTotals: Sendable {
-    var cpuNanos: UInt64 = 0
-    var energyNanojoules: UInt64 = 0
-    var gpuNanos: UInt64 = 0
-    var diskReadBytes: UInt64 = 0
-    var diskWriteBytes: UInt64 = 0
-    var wakeups: UInt64 = 0
+public struct AppUsageTotals: Sendable {
+    public var cpuNanos: UInt64 = 0
+    public var energyNanojoules: UInt64 = 0
+    public var gpuNanos: UInt64 = 0
+    public var diskReadBytes: UInt64 = 0
+    public var diskWriteBytes: UInt64 = 0
+    public var wakeups: UInt64 = 0
     /// Time-integral of footprint (byte·seconds). Divide by the report's
     /// covered seconds for the average the row displays.
-    var memoryByteSeconds: UInt64 = 0
-    var peakMemoryBytes: UInt64 = 0
+    public var memoryByteSeconds: UInt64 = 0
+    public var peakMemoryBytes: UInt64 = 0
 
-    mutating func add(_ delta: AppWorkDelta, interval: TimeInterval) {
+    public mutating func add(_ delta: AppWorkDelta, interval: TimeInterval) {
         cpuNanos.addSaturating(delta.cpuNanos)
         energyNanojoules.addSaturating(delta.energyNanojoules)
         gpuNanos.addSaturating(delta.gpuNanos)
@@ -76,7 +76,7 @@ struct AppUsageTotals: Sendable {
         peakMemoryBytes = max(peakMemoryBytes, delta.memoryBytes)
     }
 
-    mutating func merge(_ other: AppUsageTotals) {
+    public mutating func merge(_ other: AppUsageTotals) {
         cpuNanos.addSaturating(other.cpuNanos)
         energyNanojoules.addSaturating(other.energyNanojoules)
         gpuNanos.addSaturating(other.gpuNanos)
@@ -88,25 +88,25 @@ struct AppUsageTotals: Sendable {
     }
 }
 
-struct AppUsageRow: Identifiable, Sendable {
-    var id: String { attribution.key }
-    var attribution: AppAttribution
-    var totals: AppUsageTotals
+public struct AppUsageRow: Identifiable, Sendable {
+    public var id: String { attribution.key }
+    public var attribution: AppAttribution
+    public var totals: AppUsageTotals
 }
 
-struct AppUsageReport: Sendable {
+public struct AppUsageReport: Sendable {
     /// The window that was asked for, in seconds.
-    var window: TimeInterval
+    public var window: TimeInterval
     /// Seconds of that window actually observed by plausible sample intervals.
     /// Sleep, launch gaps and discarded windows all surface here rather than
     /// silently deflating every figure below.
-    var coveredSeconds: Double = 0
+    public var coveredSeconds: Double = 0
     /// Start of the oldest recorded bucket inside the window, when any exist —
     /// what lets the card say history begins mid-window instead of implying a
     /// freshly launched app has been watching all along.
-    var earliestData: Date?
+    public var earliestData: Date?
     /// Unranked; each consumer ranks by the metric it is showing.
-    var rows: [AppUsageRow] = []
+    public var rows: [AppUsageRow] = []
 }
 
 /// Rolling, bucketed account of which app did how much work, kept far enough
@@ -124,12 +124,12 @@ struct AppUsageReport: Sendable {
 /// contract as the sampler core; queries hop through that queue too, so there
 /// is no locking here. Everything lives in memory: history starts at launch
 /// and costs no disk.
-final class UsageLedger {
+public final class UsageLedger {
     /// One minute per bucket, a day of them. Windows quantise to the minute —
     /// far finer than the questions the ledger exists to answer — and the ring
     /// never reallocates.
-    static let bucketWidth: TimeInterval = 60
-    static let bucketCount = 1440
+    public static let bucketWidth: TimeInterval = 60
+    public static let bucketCount = 1440
 
     private struct Entry {
         var id: Int32
@@ -175,7 +175,7 @@ final class UsageLedger {
     /// the ledger, they just leave coverage behind. An empty delta list still
     /// records: an idle machine was observed idle, and that observation is
     /// exactly what keeps the coverage figure honest.
-    func record(_ deltas: [AppWorkDelta], endingAt date: Date, interval: TimeInterval) {
+    public func record(_ deltas: [AppWorkDelta], endingAt date: Date, interval: TimeInterval) {
         let stamp = Int64((date.timeIntervalSince1970 / Self.bucketWidth).rounded(.down))
         if stamp != currentStamp {
             flushCurrent()
@@ -209,7 +209,7 @@ final class UsageLedger {
     /// included. The window is quantised outward to whole buckets, so the
     /// oldest minute may be partially outside it — up to one bucket width of
     /// slack on a question asked in tens of minutes.
-    func report(window: TimeInterval, now: Date = Date()) -> AppUsageReport {
+    public func report(window: TimeInterval, now: Date = Date()) -> AppUsageReport {
         var report = AppUsageReport(window: window)
         let nowSeconds = now.timeIntervalSince1970
         let cutoff = Int64(((nowSeconds - window) / Self.bucketWidth).rounded(.down))
@@ -341,7 +341,7 @@ extension UInt64 {
     /// The counters here saturate rather than trap or wrap: one absurd reading
     /// upstream should pin a figure at the ceiling, not take the app down or
     /// lap back to a small, plausible-looking lie.
-    mutating func addSaturating(_ other: UInt64) {
+    public mutating func addSaturating(_ other: UInt64) {
         let (sum, overflow) = addingReportingOverflow(other)
         self = overflow ? .max : sum
     }

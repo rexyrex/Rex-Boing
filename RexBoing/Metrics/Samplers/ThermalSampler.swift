@@ -222,9 +222,7 @@ final class ThermalSampler {
     }
 
     private static func group(_ sensors: [TempSensor]) -> [SensorGroup] {
-        Dictionary(grouping: sensors, by: \.category)
-            .map { SensorGroup(category: $0.key, sensors: $0.value.sorted { $0.celsius > $1.celsius }) }
-            .sorted { $0.category.sortOrder < $1.category.sortOrder }
+        SensorGroup.grouped(sensors)
     }
 
     // MARK: - Discovery

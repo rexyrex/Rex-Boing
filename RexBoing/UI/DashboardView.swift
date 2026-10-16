@@ -60,7 +60,10 @@ struct DashboardView: View {
                 .fixedSize(horizontal: false, vertical: true)
 
                 ProcessesCard(
-                    engine: engine, snapshot: snapshot,
+                    usage: AppUsageQuery { [engine] window, completion in
+                        engine.appUsage(over: window, completion: completion)
+                    },
+                    snapshot: snapshot,
                     rowCount: preferences.processRowCount)
                 PowerCard(
                     snapshot: snapshot, history: engine.history,

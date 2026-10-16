@@ -347,3 +347,31 @@ final class Preferences: ObservableObject {
         defaults.set(effective, forKey: Key.launchAtLogin)
     }
 }
+
+extension StatusBarRenderer {
+    /// The width of a readout's column, from the widest value and caption it
+    /// can produce.
+    static func width(for readout: MenuBarReadout) -> CGFloat {
+        let template: String
+        switch readout {
+        case .cpu, .gpu, .memory, .swap, .battery: template = "100%"
+        case .cpuTemperature, .gpuTemperature: template = "100°"
+        // Three digits: Ultra-class machines exceed 100 W package draw, and
+        // "100.0W" is wider than any two-digit reading.
+        case .power: template = "100.0W"
+        // The value rows are the *up* direction — "↑" for network, "W" for
+        // disk — and "W" is the widest glyph either row can lead with.
+        case .network: template = "↑999M"
+        case .disk: template = "W999M"
+        }
+        // Network and disk swap the badge for a live rate at runtime, so it is
+        // that rate's widest form being measured, not the badge.
+        let caption: String
+        switch readout {
+        case .network: caption = "↓999M"
+        case .disk: caption = "R999M"
+        default: caption = readout.badge
+        }
+        return width(value: template, caption: caption)
+    }
+}

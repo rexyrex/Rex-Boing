@@ -16,16 +16,20 @@ import QuartzCore
 /// never wraps — so there is no cycle to cache, and caching one would quantise
 /// the exact smoothness the field exists to provide.
 @MainActor
-final class VisualCanvas: NSObject, @preconcurrency CALayerDelegate {
+public final class VisualCanvas: NSObject, @preconcurrency CALayerDelegate {
     /// What to draw at the next display pass. Set by the controller, read on
     /// the callback — which happens in the same CoreAnimation commit, on this
     /// same thread, so there is nothing to synchronise.
-    var visual: Visualizer = .rex
-    var time: Double = 0
-    var load: Double = 0
-    var color: NSColor = .labelColor
+    public var visual: Visualizer = .rex
+    public var time: Double = 0
+    public var load: Double = 0
+    public var color: NSColor = .labelColor
 
-    func draw(_ layer: CALayer, in context: CGContext) {
+    public override init() {
+        super.init()
+    }
+
+    public func draw(_ layer: CALayer, in context: CGContext) {
         // Inside the status button's layer tree, `contentsAreFlipped()` is
         // true and CoreAnimation hands this delegate a top-left-origin
         // context — measured in the running app: CTM d=-2, ty=height*scale —
@@ -48,7 +52,7 @@ final class VisualCanvas: NSObject, @preconcurrency CALayerDelegate {
     /// Suppresses implicit animation on every property of the layer. A
     /// cross-fade between frames reads as motion blur and costs an extra frame
     /// of compositing.
-    func action(for layer: CALayer, forKey event: String) -> CAAction? {
+    public func action(for layer: CALayer, forKey event: String) -> CAAction? {
         NSNull()
     }
 }

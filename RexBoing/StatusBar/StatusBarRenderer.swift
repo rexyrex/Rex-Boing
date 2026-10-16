@@ -1,12 +1,19 @@
 import AppKit
 
 /// One column of text in the menu bar: a small caption over a value.
-struct ReadoutCell: Equatable {
-    var caption: String
-    var value: String
+public struct ReadoutCell: Equatable {
+    public init(caption: String, value: String, tint: NSColor? = nil, width: CGFloat) {
+        self.caption = caption
+        self.value = value
+        self.tint = tint
+        self.width = width
+    }
+
+    public var caption: String
+    public var value: String
     /// Non-nil only when the value has crossed into a warning range.
-    var tint: NSColor?
-    var width: CGFloat
+    public var tint: NSColor?
+    public var width: CGFloat
 }
 
 /// Draws the readout half of the menu bar item. The visualiser half is
@@ -19,13 +26,13 @@ struct ReadoutCell: Equatable {
 /// re-run its layout. Kept apart, they go into two layers, and the text is
 /// rasterised only when the text actually changes.
 @MainActor
-enum StatusBarRenderer {
-    static let barHeight: CGFloat = 22
+public enum StatusBarRenderer {
+    public static let barHeight: CGFloat = 22
     /// The visualiser's box: the full height of the bar, and wide enough for
     /// the rex to travel in. Everything drawn in it tapers to nothing at the
     /// left and right edges, so this is a shape in its own right rather than a
     /// window cropped out of something larger.
-    static let visualSize = Visualizer.canvasSize
+    public static let visualSize = Visualizer.canvasSize
 
     private static let columnGap: CGFloat = 7
     private static let leadingInset: CGFloat = 2
@@ -34,19 +41,19 @@ enum StatusBarRenderer {
     /// Internal rather than private: `Tools/readout-check.swift` measures
     /// captions with the renderer's own font, so a size change there cannot
     /// silently leave the check measuring at the old one.
-    static let captionFont = NSFont.systemFont(ofSize: 7.5, weight: .semibold)
+    public static let captionFont = NSFont.systemFont(ofSize: 7.5, weight: .semibold)
     private static let valueFont = NSFont.monospacedDigitSystemFont(ofSize: 10, weight: .regular)
 
     /// Where everything sits inside the status item.
-    struct Layout: Equatable {
-        var size: CGSize
+    public struct Layout: Equatable {
+        public var size: CGSize
         /// The visualiser's frame within the item, in points. Empty when hidden.
-        var visual: CGRect
+        public var visual: CGRect
         /// Left edge of the first readout column.
-        var textOrigin: CGFloat
+        public var textOrigin: CGFloat
     }
 
-    static func layout(cells: [ReadoutCell], hasVisual: Bool) -> Layout {
+    public static func layout(cells: [ReadoutCell], hasVisual: Bool) -> Layout {
         let visualSpace = hasVisual ? visualSize.width : 0
         let cellsWidth = cells.reduce(0) { $0 + $1.width }
             + CGFloat(max(0, cells.count - 1)) * columnGap
@@ -75,7 +82,7 @@ enum StatusBarRenderer {
     /// The trade-off is that `labelColor` resolves against whatever appearance
     /// is current at *render* time, so callers must wrap this in the status
     /// button's `performAsCurrentDrawingAppearance`.
-    static func renderReadouts(
+    public static func renderReadouts(
         cells: [ReadoutCell],
         layout: Layout,
         monochrome: Bool,
@@ -171,46 +178,28 @@ enum StatusBarRenderer {
             y: rect.midY - size.height / 2))
     }
 
-    /// Measures the widest string a readout can produce, so the item does not
-    /// resize on every sample as digits come and go.
+    /// Measures the widest column a readout can produce, so the item does not
+    /// resize on every sample as digits come and go: `value` is the widest
+    /// value the readout can show, `caption` the widest caption.
     ///
     /// Memoised: laying out an `NSAttributedString` just to measure it was
     /// showing up as real CPU time when this ran on every animation frame.
-    private static var widthCache: [MenuBarReadout: CGFloat] = [:]
+    private static var widthCache: [String: CGFloat] = [:]
 
-    static func width(for readout: MenuBarReadout) -> CGFloat {
-        if let cached = widthCache[readout] { return cached }
+    public static func width(value: String, caption: String) -> CGFloat {
+        let key = value + "\u{1F}" + caption
+        if let cached = widthCache[key] { return cached }
 
-        let template: String
-        switch readout {
-        case .cpu, .gpu, .memory, .swap, .battery: template = "100%"
-        case .cpuTemperature, .gpuTemperature: template = "100°"
-        // Three digits: Ultra-class machines exceed 100 W package draw, and
-        // "100.0W" is wider than any two-digit reading.
-        case .power: template = "100.0W"
-        // The value rows are the *up* direction — "↑" for network, "W" for
-        // disk — and "W" is the widest glyph either row can lead with.
-        case .network: template = "↑999M"
-        case .disk: template = "W999M"
-        }
-        let value = NSAttributedString(
-            string: template, attributes: [.font: valueFont]).size()
+        let valueSize = NSAttributedString(
+            string: value, attributes: [.font: valueFont]).size()
         // The caption is measured too, not assumed narrower. It is set four
         // sizes down, so for most readouts the value still wins — but a word
         // like "SWAP" over "100%" does not, and `draw` would silently shrink
-        // the caption a point to fit rather than let the column grow. Network
-        // and disk swap the badge for a live rate at runtime, so it is that
-        // rate's widest form being measured, not the badge.
-        let captionTemplate: String
-        switch readout {
-        case .network: captionTemplate = "↓999M"
-        case .disk: captionTemplate = "R999M"
-        default: captionTemplate = readout.badge
-        }
-        let caption = NSAttributedString(
-            string: captionTemplate, attributes: [.font: captionFont]).size()
-        let width = ceil(max(value.width, caption.width)) + 2
-        widthCache[readout] = width
+        // the caption a point to fit rather than let the column grow.
+        let captionSize = NSAttributedString(
+            string: caption, attributes: [.font: captionFont]).size()
+        let width = ceil(max(valueSize.width, captionSize.width)) + 2
+        widthCache[key] = width
         return width
     }
 }
