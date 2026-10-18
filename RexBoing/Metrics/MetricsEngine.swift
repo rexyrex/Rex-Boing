@@ -31,6 +31,9 @@ final class MetricsEngine: ObservableObject {
     private var samplingPaused = false
     private var configuredInterval: TimeInterval = RefreshRate.fast.rawValue
     private var cancellables = Set<AnyCancellable>()
+    /// The pids the sampler's application catalogue currently holds, so a
+    /// change to the running set sends only what was added or removed.
+    private var cataloguedPIDs = Set<Int32>()
 
     init() {
         configureRunningApplicationCatalogue()
@@ -80,36 +83,39 @@ final class MetricsEngine: ObservableObject {
             initial[application.processIdentifier] = Self.metadata(for: application)
         }
         let catalogue = initial
+        cataloguedPIDs = Set(initial.keys)
         queue.async { [core] in core.replaceRunningApplications(catalogue) }
 
-        let center = workspace.notificationCenter
-        center.publisher(for: NSWorkspace.didLaunchApplicationNotification)
-            .compactMap { notification in
-                notification.userInfo?[NSWorkspace.applicationUserInfoKey]
-                    as? NSRunningApplication
-            }
+        // Key-value observation of the running set, not the launch and
+        // terminate notifications: those are posted only for apps with a Dock
+        // presence (checked on macOS 27 — a background-only app produced
+        // neither). The hundred-odd accessory and background-only apps —
+        // widget hosts, Quick Look and AutoFill services — were never added
+        // when they started or removed when they quit, so their names
+        // depended on whether they predated the app, and a recycled pid
+        // inherited a dead app's name and bundle identifier.
+        workspace.publisher(for: \.runningApplications)
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] application in
+            .sink { [weak self] applications in
                 guard let self else { return }
-                let pid = application.processIdentifier
-                let metadata = Self.metadata(for: application)
-                self.queue.async { [core = self.core] in
-                    core.updateRunningApplication(pid: pid, metadata: metadata)
+                var current: [Int32: NSRunningApplication] = [:]
+                current.reserveCapacity(applications.count)
+                for application in applications {
+                    current[application.processIdentifier] = application
                 }
-            }
-            .store(in: &cancellables)
-
-        center.publisher(for: NSWorkspace.didTerminateApplicationNotification)
-            .compactMap { notification in
-                notification.userInfo?[NSWorkspace.applicationUserInfoKey]
-                    as? NSRunningApplication
-            }
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] application in
-                guard let self else { return }
-                let pid = application.processIdentifier
+                let removed = self.cataloguedPIDs.subtracting(current.keys)
+                let added = current
+                    .filter { !self.cataloguedPIDs.contains($0.key) }
+                    .map { ($0.key, Self.metadata(for: $0.value)) }
+                guard !removed.isEmpty || !added.isEmpty else { return }
+                self.cataloguedPIDs = Set(current.keys)
                 self.queue.async { [core = self.core] in
-                    core.updateRunningApplication(pid: pid, metadata: nil)
+                    for pid in removed {
+                        core.updateRunningApplication(pid: pid, metadata: nil)
+                    }
+                    for (pid, metadata) in added {
+                        core.updateRunningApplication(pid: pid, metadata: metadata)
+                    }
                 }
             }
             .store(in: &cancellables)

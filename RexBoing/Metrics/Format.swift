@@ -16,6 +16,10 @@ public enum Format {
             formatter.countStyle = countStyle
             formatter.allowedUnits = [.useKB, .useMB, .useGB, .useTB]
             formatter.zeroPadsFractionDigits = false
+            // Left on, zero comes back as the words "Zero KB" — in a swap
+            // tile, a session's traffic at launch, a disk total — beside
+            // figures that are all digits.
+            formatter.allowsNonnumericFormatting = false
             self.formatter = formatter
         }
 
@@ -162,7 +166,12 @@ public enum Format {
     }
 
     public static func duration(_ interval: TimeInterval) -> String {
-        let total = Int(max(0, interval))
+        // Uptimes arrive from remote agents too, and `Int(_:)` traps on
+        // infinity or anything past Int.max: an agent sending a nonsense
+        // uptime must read as unknown, not take the app down. Clamped to a
+        // million years, which still prints as a number.
+        guard interval.isFinite else { return "—" }
+        let total = Int(min(max(0, interval), 3.2e13))
         let days = total / 86_400
         let hours = (total % 86_400) / 3_600
         let minutes = (total % 3_600) / 60

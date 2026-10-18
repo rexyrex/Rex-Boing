@@ -311,6 +311,19 @@ public enum WireMessage: Sendable {
         var type: String?
         var code: String?
         var message: String?
+
+        private enum CodingKeys: String, CodingKey { case type, code, message }
+
+        // Each key under its own `try?`. Unknown keys must be ignored, and
+        // `code` and `message` only mean something on a notice: a future
+        // message that carries either as an object must not make every line
+        // of that type unreadable to this app.
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            type = try? container.decodeIfPresent(String.self, forKey: .type)
+            code = try? container.decodeIfPresent(String.self, forKey: .code)
+            message = try? container.decodeIfPresent(String.self, forKey: .message)
+        }
     }
 
     /// Decodes one protocol line. Returns nil for a line that is not JSON.
@@ -507,9 +520,15 @@ extension ThermalMetrics {
         self.init()
         if let wire {
             if let wireSensors = wire.sensors {
-                sensors = wireSensors.compactMap { sensor in
+                // Keys are the views' identities, so they are made unique
+                // here as the local sampler makes them: a duplicate id leaves
+                // SwiftUI's ForEach undefined. A keyless sensor gets its
+                // position rather than sharing one placeholder with the rest.
+                var seen = Set<String>()
+                sensors = wireSensors.enumerated().compactMap { offset, sensor in
                     guard let celsius = sensor.celsius else { return nil }
-                    let key = sensor.key ?? sensor.label ?? "?"
+                    let key = sensor.key ?? sensor.label ?? "sensor \(offset)"
+                    guard seen.insert(key).inserted else { return nil }
                     return TempSensor(
                         key: key, label: sensor.label ?? key, celsius: celsius,
                         category: SensorCategory(rawValue: sensor.category ?? "") ?? .other)
@@ -518,10 +537,13 @@ extension ThermalMetrics {
                 sensors = previous.sensors
             }
             if let wireFans = wire.fans {
-                fans = wireFans.enumerated().map { offset, fan in
+                var seen = Set<Int>()
+                fans = wireFans.enumerated().compactMap { offset, fan in
+                    let index = fan.index ?? offset
+                    guard seen.insert(index).inserted else { return nil }
                     let rpm = fan.rpm ?? 0
                     return Fan(
-                        index: fan.index ?? offset, rpm: rpm,
+                        index: index, rpm: rpm,
                         minRPM: fan.minRPM ?? 0, maxRPM: max(fan.maxRPM ?? rpm, rpm))
                 }
             } else if let previous {
@@ -623,8 +645,9 @@ extension SleepMetrics {
     init(wire: WireSleep) {
         self.init()
         sampled = wire.sampled ?? false
+        var seen = Set<Int32>()
         blockers = (wire.blockers ?? []).compactMap { blocker in
-            guard let pid = blocker.pid else { return nil }
+            guard let pid = blocker.pid, seen.insert(pid).inserted else { return nil }
             return SleepBlocker(
                 pid: pid, name: blocker.name ?? "pid \(pid)",
                 preventsDisplaySleep: blocker.display ?? false,
@@ -647,7 +670,8 @@ extension ProcessMetrics {
             byPID[pid] = ProcessRow(wire: row, pid: pid)
         }
         for metric in ProcessMetric.allCases {
-            let pids = wire.rank?[metric.wireKey] ?? []
+            var seen = Set<Int32>()
+            let pids = (wire.rank?[metric.wireKey] ?? []).filter { seen.insert($0).inserted }
             let rows = pids.compactMap { byPID[$0] }
             if !rows.isEmpty { leaders[metric] = rows }
         }
@@ -705,7 +729,13 @@ extension HostDescription {
         host.memoryBytes = memoryBytes
         host.bootTime = Int64(bootTime.timeIntervalSince1970 * 1000)
         host.isAppleSilicon = isAppleSilicon
-        host.virtualization = "none"
+        // Hypervisor.framework sets this inside any guest — a CI runner, a
+        // UTM or Parallels VM — so a macOS agent there says so, as the Linux
+        // agent does with its own detection.
+        var guest: Int32 = 0
+        var size = MemoryLayout<Int32>.size
+        let inVM = sysctlbyname("kern.hv_vmm_present", &guest, &size, nil, 0) == 0 && guest == 1
+        host.virtualization = inVM ? "vm" : "none"
         return host
     }
 }

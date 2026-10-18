@@ -172,6 +172,38 @@ struct WireCheck {
             check(false, "notices decode")
         }
 
+        // What a buggy or hostile agent can put on the wire must not crash
+        // the app or confuse its views.
+        check(Format.duration(.infinity) == "—" && Format.shortInterval(.infinity) == "—"
+              && Format.duration(.nan) == "—" && !Format.duration(1e19).isEmpty,
+              "absurd uptimes format instead of trapping")
+        check(!Format.bytes(UInt64(0)).contains("Zero") && !Format.diskBytes(0).contains("Zero"),
+              "zero bytes read as a number")
+        let oddMessage = #"{"type":"sample","message":{"x":1},"code":7,"cpu":{"total":0.5}}"#
+        if case .sample(let odd)? = WireMessage.decode(Data(oddMessage.utf8)) {
+            check(odd.cpu?.total == 0.5, "a sample with non-string code and message still decodes")
+        } else {
+            check(false, "a sample with non-string code and message still decodes")
+        }
+        let dupes = #"""
+        {"type":"sample","detail":"full",
+         "thermal":{"sensors":[{"key":"a","celsius":40},{"key":"a","celsius":41},{"celsius":42},{"celsius":43}],
+                    "fans":[{"index":0,"rpm":1000},{"index":0,"rpm":2000},{"rpm":900}]},
+         "sleep":{"sampled":true,"blockers":[{"pid":9,"name":"caffeinate"},{"pid":9,"name":"caffeinate"}]},
+         "processes":{"count":1,"rows":[{"pid":7,"name":"x","cpu":0.5}],"rank":{"cpu":[7,7]}}}
+        """#
+        if case .sample(let dup)? = WireMessage.decode(Data(dupes.utf8)) {
+            let snapshot = Snapshot(sample: dup, host: nil, previous: nil)
+            let keys = snapshot.thermal.sensors.map(\.key)
+            check(keys.count == 3 && Set(keys).count == 3, "sensor ids are unique (\(keys))")
+            let fans = snapshot.thermal.fans.map(\.index)
+            check(fans.count == 2 && Set(fans).count == 2, "fan ids are unique (\(fans))")
+            check(snapshot.sleep.blockers.count == 1, "sleep blockers are unique by pid")
+            check(snapshot.processes.leaders[.cpu]?.count == 1, "a ranked pid appears once")
+        } else {
+            check(false, "the duplicate-id sample decodes")
+        }
+
         print(failures == 0 ? "All wire checks passed." : "\(failures) wire check(s) failed.")
         exit(failures == 0 ? 0 : 1)
     }

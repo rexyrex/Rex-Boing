@@ -1,4 +1,5 @@
 import AppKit
+import IOKit
 import Foundation
 
 // Exercises the live, unprivileged telemetry paths without launching the menu
@@ -139,6 +140,29 @@ enum MetricsCheck {
               "disk rates are finite and non-negative")
         check(diskReading.capacity == 0 || diskReading.available <= diskReading.capacity,
               "volume capacity is internally consistent")
+
+        // Disk images are file-backed block drivers; their traffic is already
+        // counted on the volume holding the file, so throughput skips them.
+        // Every image mounted on this Mac must be recognised, and the boot
+        // drive must not be.
+        var images = 0, physical = 0, misjudged = 0
+        var drivers: io_iterator_t = 0
+        if IOServiceGetMatchingServices(
+            kIOMainPortDefault, IOServiceMatching("IOBlockStorageDriver"), &drivers) == KERN_SUCCESS {
+            while case let drive = IOIteratorNext(drivers), drive != 0 {
+                let characteristics = IORegistryEntrySearchCFProperty(
+                    drive, kIOServicePlane, "Protocol Characteristics" as CFString, kCFAllocatorDefault,
+                    IOOptionBits(kIORegistryIterateRecursively | kIORegistryIterateParents)) as? NSDictionary
+                let location = characteristics?["Physical Interconnect Location"] as? String
+                let virtual = DiskSampler.isVirtual(drive)
+                if location == "File" { images += 1; if !virtual { misjudged += 1 } }
+                if location == "Internal" { physical += 1; if virtual { misjudged += 1 } }
+                IOObjectRelease(drive)
+            }
+            IOObjectRelease(drivers)
+        }
+        check(misjudged == 0,
+              "disk images are left out of throughput, internal drives kept (\(images) images, \(physical) internal)")
 
         check(processReading.count > 0, "process enumeration returned rows")
         check(processReading.count <= cpuReading.processCount + 64,

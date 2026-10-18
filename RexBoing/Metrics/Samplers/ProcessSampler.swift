@@ -36,8 +36,11 @@ final class ProcessSampler {
     private struct Baseline {
         /// Mach absolute time units, not nanoseconds — see
         /// `nanosecondsPerCPUTick`. Named for what it is so the next reader
-        /// does not have to rediscover the difference the hard way.
-        var cpuTicks: UInt64
+        /// does not have to rediscover the difference the hard way. `nil`
+        /// for a row seen only through GPU attribution, whose CPU time was
+        /// never read: differencing a later full read against zero would
+        /// charge the process its whole lifetime of CPU in one sample.
+        var cpuTicks: UInt64?
         /// `nil` when `proc_pid_rusage` failed for this pass. Keeping that
         /// absence in the baseline prevents the next successful read from being
         /// differenced against zero and reported as a lifetime-sized spike.
@@ -230,7 +233,8 @@ final class ProcessSampler {
 
             if let previous = baselines[pid], previous.startTime == startTime,
                !discardCounterDeltas {
-                let cpuDelta = cpuTicks >= previous.cpuTicks ? cpuTicks - previous.cpuTicks : 0
+                let previousCPU = previous.cpuTicks ?? cpuTicks
+                let cpuDelta = cpuTicks >= previousCPU ? cpuTicks - previousCPU : 0
                 contribution.cpuNanos = UInt64(
                     Double(cpuDelta) * Self.nanosecondsPerCPUTick)
                 // Percent of one core, so this exceeds 100 for multi-threaded
@@ -248,7 +252,12 @@ final class ProcessSampler {
 
                 if let gpuNanos, let previousGPU = previous.gpuNanos {
                     let gpuDelta = gpuNanos >= previousGPU ? gpuNanos - previousGPU : 0
-                    contribution.gpuNanos = gpuDelta
+                    // The per-pid figure is a sum over the process's GPU
+                    // clients, and a client the driver omitted for a pass
+                    // comes back with its whole history. The rate below is
+                    // capped at 100%; the ledger takes the same cap, or one
+                    // such return files hours of phantom GPU time.
+                    contribution.gpuNanos = min(gpuDelta, Self.nanoseconds(in: interval))
                     row.gpuPercent = min(
                         100, Double(gpuDelta) / (interval * 1_000_000_000) * 100)
                 }
@@ -322,11 +331,11 @@ final class ProcessSampler {
                 var contribution = AppWorkDelta(attribution: AppAttribution(
                     key: "proc:\(row.name)", displayName: row.name,
                     bundlePath: nil, executablePath: nil))
-                contribution.gpuNanos = gpuNanos - previousGPU
+                contribution.gpuNanos = min(gpuNanos - previousGPU, Self.nanoseconds(in: interval))
                 Self.accumulate(contribution, into: &work)
             }
             nextBaselines[pid] = Baseline(
-                cpuTicks: 0, energyNanojoules: nil, gpuNanos: gpuNanos, startTime: startTime)
+                cpuTicks: nil, energyNanojoules: nil, gpuNanos: gpuNanos, startTime: startTime)
             rows.append(row)
         }
 
@@ -432,6 +441,12 @@ final class ProcessSampler {
     /// Activity Monitor's "Energy Impact" is an unpublished composite. This is a
     /// simple, honest stand-in: average power draw attributable to the process
     /// over the interval, scaled so that ~1 unit is roughly 100 mW.
+    /// The window's length in nanoseconds: the most GPU time one row can
+    /// honestly have used in it.
+    private static func nanoseconds(in interval: TimeInterval) -> UInt64 {
+        UInt64(max(0, interval) * 1_000_000_000)
+    }
+
     private static func energyImpact(nanojoules: UInt64, interval: TimeInterval) -> Double {
         guard interval > 0 else { return 0 }
         let watts = Double(nanojoules) / 1_000_000_000 / interval

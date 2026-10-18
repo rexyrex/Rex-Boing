@@ -181,8 +181,14 @@ final class NetworkSampler {
     /// the reported throughput. AWDL and its low-latency sibling are excluded
     /// for a different reason: they are the peer-to-peer transport for
     /// AirDrop, Sidecar and Continuity, whose discovery chatter and transfer
-    /// traffic is not what a network readout conventionally reports.
-    private static let virtualPrefixes = ["lo", "gif", "stf", "bridge", "utun", "ipsec", "ppp", "awdl", "llw"]
+    /// traffic is not what a network readout conventionally reports. A
+    /// virtual machine's end of its NAT link (`vmenet` for the
+    /// Virtualization framework — Docker Desktop, UTM, Tart — and `vmnet`
+    /// for VMware) is the same story as a bridge: its traffic leaves again
+    /// through the physical interface.
+    private static let virtualPrefixes = [
+        "lo", "gif", "stf", "bridge", "utun", "ipsec", "ppp", "awdl", "llw", "vmenet", "vmnet",
+    ]
 
     private static func isCounted(_ name: String) -> Bool {
         !virtualPrefixes.contains { name.hasPrefix($0) }
@@ -319,6 +325,10 @@ final class DiskSampler {
         return metrics
     }
 
+    /// Per driver registry entry, whether it is virtual; rebuilt each pass
+    /// from the drivers present, so a detached image's entry goes with it.
+    private var virtualDrives: [UInt64: Bool] = [:]
+
     private func throughputDeltas() -> (read: UInt64, write: UInt64)? {
         var iterator: io_iterator_t = 0
         guard IOServiceGetMatchingServices(
@@ -329,6 +339,7 @@ final class DiskSampler {
 
         var current: [UInt64: (read: UInt64, write: UInt64)] = [:]
         current.reserveCapacity(previousCounters.count + 2)
+        var virtual: [UInt64: Bool] = [:]
         var readDelta: UInt64 = 0
         var writeDelta: UInt64 = 0
         var sawDrive = false
@@ -336,10 +347,20 @@ final class DiskSampler {
 
         while case let drive = IOIteratorNext(iterator), drive != 0 {
             defer { IOObjectRelease(drive) }
-            sawDrive = true
 
             var entryID: UInt64 = 0
             guard IORegistryEntryGetRegistryEntryID(drive, &entryID) == KERN_SUCCESS else { continue }
+            // Disk images — simulator runtimes, sparse bundles, a network
+            // Time Machine target — are block drivers too, behind a virtual
+            // interface. What they move is file I/O on a volume already
+            // counted here, or network traffic, so counting them as well
+            // inflated the readout by whatever the image read. Decided once
+            // per driver: the answer is a registry walk up the provider chain.
+            let isVirtual = virtualDrives[entryID] ?? Self.isVirtual(drive)
+            virtual[entryID] = isVirtual
+            if isVirtual { continue }
+            sawDrive = true
+
             guard let statistics = IORegistryEntryCreateCFProperty(
                 drive, "Statistics" as CFString, kCFAllocatorDefault, 0)?
                 .takeRetainedValue() as? NSDictionary
@@ -370,7 +391,18 @@ final class DiskSampler {
         // machine. Same rule as above: fail the pass, keep the baselines.
         guard IOIteratorIsValid(iterator) != 0 else { return nil }
         previousCounters = current
+        virtualDrives = virtual
         return (readDelta, writeDelta)
+    }
+
+    /// Whether a block driver sits on a virtual interface — a disk image's
+    /// `AppleDiskImageDevice`, or any other device that is a file or memory
+    /// underneath — judged by the nearest provider's protocol characteristics.
+    static func isVirtual(_ drive: io_registry_entry_t) -> Bool {
+        let characteristics = IORegistryEntrySearchCFProperty(
+            drive, kIOServicePlane, "Protocol Characteristics" as CFString, kCFAllocatorDefault,
+            IOOptionBits(kIORegistryIterateRecursively | kIORegistryIterateParents)) as? NSDictionary
+        return characteristics?["Physical Interconnect"] as? String == "Virtual Interface"
     }
 
     private func capacity() -> (name: String, capacity: UInt64, available: UInt64) {

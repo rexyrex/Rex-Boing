@@ -96,12 +96,23 @@ final class SleepAssertionSampler {
         names = names.filter { blockers[$0.key] != nil }
 
         // Display blockers lead — they hold the most — then alphabetical, so
-        // the list keeps its order from one sample to the next.
-        metrics.blockers = blockers.values.sorted {
+        // the list keeps its order from one sample to the next. Same-named
+        // blockers (two `caffeinate`s) fall back to the pid: left to the
+        // dictionary's per-instance ordering they swapped places between
+        // samples. Assertion names are sorted for the same reason.
+        metrics.blockers = blockers.values.map { blocker in
+            var blocker = blocker
+            blocker.assertionNames.sort()
+            return blocker
+        }.sorted {
             if $0.preventsDisplaySleep != $1.preventsDisplaySleep {
                 return $0.preventsDisplaySleep
             }
-            return $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+            switch $0.name.localizedCaseInsensitiveCompare($1.name) {
+            case .orderedAscending: return true
+            case .orderedDescending: return false
+            case .orderedSame: return $0.pid < $1.pid
+            }
         }
         return metrics
     }
