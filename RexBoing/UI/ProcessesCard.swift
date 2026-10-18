@@ -282,7 +282,11 @@ public struct ProcessActions: View {
             Button("Copy Path") { copy(path) }
             if control.isLocal {
                 Button("Reveal in Finder") {
-                    NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
+                    // An app's executable sits inside its bundle; revealing it
+                    // would open Finder inside the package. Show the app, as
+                    // the row's icon does.
+                    let target = IconCache.outermostBundle(in: path) ?? path
+                    NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: target)])
                 }
             }
         }
@@ -412,7 +416,7 @@ private final class IconCache {
         // Contents/MacOS/Foo Helper`. Taking the *outermost* `.app` in the path
         // gets the icon a user would recognise, rather than a generic Mach-O
         // one or the helper's own blank icon.
-        let icon = NSWorkspace.shared.icon(forFile: outermostBundle(in: path) ?? path)
+        let icon = NSWorkspace.shared.icon(forFile: Self.outermostBundle(in: path) ?? path)
         icon.size = NSSize(width: 32, height: 32)
 
         cache[path] = icon
@@ -425,7 +429,7 @@ private final class IconCache {
         return icon
     }
 
-    private func outermostBundle(in path: String) -> String? {
+    static func outermostBundle(in path: String) -> String? {
         let components = path.split(separator: "/", omittingEmptySubsequences: false)
         guard let index = components.firstIndex(where: { $0.hasSuffix(".app") }) else {
             return nil

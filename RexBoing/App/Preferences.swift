@@ -253,10 +253,16 @@ final class Preferences: ObservableObject {
     /// change it — the settings pane shows the way there.
     @Published private(set) var launchAtLoginRequiresApproval: Bool
 
+    /// Why the last change to `launchAtLogin` did not take, when
+    /// ServiceManagement said — shown under the toggle, which otherwise just
+    /// snaps back. Cleared by the next change that succeeds.
+    @Published private(set) var launchAtLoginFailure: String? = nil
+
     @Published var launchAtLogin: Bool {
         didSet {
             guard !isSyncingLoginItem else { return }
-            let effective = LoginItem.setEnabled(launchAtLogin)
+            let (effective, failure) = LoginItem.setEnabled(launchAtLogin)
+            launchAtLoginFailure = failure
             launchAtLoginRequiresApproval = LoginItem.requiresApproval
             if effective != launchAtLogin {
                 isSyncingLoginItem = true

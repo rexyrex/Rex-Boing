@@ -255,7 +255,16 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
                 // Keep the latest load, but avoid text/layout/layer work when
                 // there is no status-item window a user can see. The visibility
                 // and session notifications force one complete refresh on return.
-                guard self.sessionIsActive, self.statusItemIsVisible else { return }
+                guard self.sessionIsActive else { return }
+                guard self.statusItemIsVisible else {
+                    // Re-read the window's state rather than trusting the
+                    // last notification: a menu-bar manager can collapse the
+                    // item and later hand it a new window, whose occlusion
+                    // changes would otherwise leave the bar frozen. One flag
+                    // read per sample.
+                    self.updateStatusItemVisibility()
+                    return
+                }
                 self.refresh(snapshot)
             }
             .store(in: &cancellables)
@@ -328,29 +337,36 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
 
         // Dragging the item to a display with a different backing scale changes
         // what a crisp frame is, so both caches have to be redrawn for it.
+        //
+        // Both are matched against whichever window the button has *now*,
+        // not the one it had at launch, so an item that AppKit re-hosts — a
+        // menu-bar manager collapsing and restoring it — keeps being heard.
         let defaultCenter = NotificationCenter.default
-        if let statusWindow = statusItem.button?.window {
-            observers.append(defaultCenter.addObserver(
-                forName: NSWindow.didChangeBackingPropertiesNotification,
-                object: statusWindow, queue: .main
-            ) { [weak self] _ in
-                MainActor.assumeIsolated {
-                    guard let self else { return }
-                    self.updateStatusItemVisibility()
-                    self.refresh(self.engine.snapshot, force: true)
-                }
-            })
+        observers.append(defaultCenter.addObserver(
+            forName: NSWindow.didChangeBackingPropertiesNotification,
+            object: nil, queue: .main
+        ) { [weak self] note in
+            let window = (note.object as AnyObject?).map(ObjectIdentifier.init)
+            MainActor.assumeIsolated {
+                guard let self, self.isStatusWindow(window) else { return }
+                self.updateStatusItemVisibility()
+                self.refresh(self.engine.snapshot, force: true)
+            }
+        })
 
-            // AppKit's occlusion state accounts for the window being fully covered
-            // or removed from the visible menu-bar space. Pause the display link in
-            // either case; its next visible-state notification redraws immediately.
-            observers.append(defaultCenter.addObserver(
-                forName: NSWindow.didChangeOcclusionStateNotification,
-                object: statusWindow, queue: .main
-            ) { [weak self] _ in
-                MainActor.assumeIsolated { self?.updateStatusItemVisibility() }
-            })
-        }
+        // AppKit's occlusion state accounts for the window being fully covered
+        // or removed from the visible menu-bar space. Pause the display link in
+        // either case; its next visible-state notification redraws immediately.
+        observers.append(defaultCenter.addObserver(
+            forName: NSWindow.didChangeOcclusionStateNotification,
+            object: nil, queue: .main
+        ) { [weak self] note in
+            let window = (note.object as AnyObject?).map(ObjectIdentifier.init)
+            MainActor.assumeIsolated {
+                guard let self, self.isStatusWindow(window) else { return }
+                self.updateStatusItemVisibility()
+            }
+        })
         updateStatusItemVisibility()
 
         // Switching between light and dark invalidates every cached frame.
@@ -392,6 +408,13 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         if active { updateStatusItemVisibility() }
         retuneAnimation()
         refresh(engine.snapshot, force: true)
+    }
+
+    /// Compared by identity, which is all a notification's object needs and
+    /// is `Sendable` where the window itself is not.
+    private func isStatusWindow(_ window: ObjectIdentifier?) -> Bool {
+        guard let window, let current = statusItem.button?.window else { return false }
+        return window == ObjectIdentifier(current)
     }
 
     private func updateStatusItemVisibility() {
@@ -794,7 +817,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             lines.append("Swap \(Format.bytes(snapshot.memory.swap.used))")
         }
         if let celsius = snapshot.thermal.cpuCelsius {
-            lines.append("CPU \(Format.temperature(celsius, unit: preferences.temperatureUnit))")
+            lines.append("CPU temperature \(Format.temperature(celsius, unit: preferences.temperatureUnit))")
         }
 
         let tooltip = lines.joined(separator: "\n")
@@ -979,7 +1002,15 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
 
     // MARK: - NSPopoverDelegate
 
+    /// The item stays highlighted while its dashboard is up, the way a system
+    /// menu-bar item does while its menu is open. Set once shown, because the
+    /// press that opened it un-highlights the button as it ends.
+    func popoverDidShow(_ notification: Notification) {
+        statusItem.button?.highlight(true)
+    }
+
     func popoverDidClose(_ notification: Notification) {
+        statusItem.button?.highlight(false)
         if isClosingViaToggle {
             isClosingViaToggle = false
         } else {

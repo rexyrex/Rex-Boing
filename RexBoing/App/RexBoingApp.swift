@@ -37,11 +37,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // and two claimants to the login item. The copy launched most recently
         // wins, which is what "replace the running instance with the fresh
         // build" means.
-        let pid = ProcessInfo.processInfo.processIdentifier
+        //
+        // Only copies that started *before* this one are quit. Two copies
+        // launched together (a login item and a manual open) would otherwise
+        // each see the other and quit it, leaving nothing in the menu bar.
+        let current = NSRunningApplication.current
         if let identifier = Bundle.main.bundleIdentifier {
             for incumbent in NSRunningApplication.runningApplications(
                 withBundleIdentifier: identifier)
-            where incumbent.processIdentifier != pid {
+            where incumbent.processIdentifier != current.processIdentifier
+                && Self.launched(incumbent, before: current) {
                 incumbent.terminate()
             }
         }
@@ -55,8 +60,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.statusItem = StatusItemController(engine: engine)
     }
 
+    /// Launch order, oldest first; the pid breaks a tie (or a missing date),
+    /// so of any two copies exactly one counts as the elder.
+    private static func launched(_ a: NSRunningApplication, before b: NSRunningApplication) -> Bool {
+        if let da = a.launchDate, let db = b.launchDate, da != db { return da < db }
+        return a.processIdentifier < b.processIdentifier
+    }
+
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         false
+    }
+
+    /// Opening the app again — from Finder, Spotlight or Launchpad — while it
+    /// is running shows Settings. The status item can be out of sight (a full
+    /// menu bar hides it behind the notch, a menu-bar manager can collapse
+    /// it, or too many readouts can push it off), and without this the open
+    /// did nothing at all, leaving no way to reach Settings or Quit. The flag
+    /// is no guide here: the status item's own window can count as visible.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        openSettings()
+        return false
     }
 
     /// Restorable state is archived with secure coding; without saying so,

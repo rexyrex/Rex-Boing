@@ -95,6 +95,30 @@ enum InkCheck {
             }
         }
 
+        // The menu bar's warning tints have to read on either bar: past 3:1
+        // against white under a light appearance and against near-black under
+        // a dark one. Resolved the way the readouts are drawn — inside the
+        // appearance — so a tint that ignored it fails one side or the other.
+        let white = NSColor(srgbRed: 1, green: 1, blue: 1, alpha: 1)
+        let darkBar = NSColor(srgbRed: 0.12, green: 0.12, blue: 0.12, alpha: 1)
+        for severity in [Severity.elevated, .high, .critical] {
+            guard let ink = severity.color else {
+                fail("\(severity): no menu bar ink")
+                continue
+            }
+            var light = ink, dark = ink
+            NSAppearance(named: .aqua)!.performAsCurrentDrawingAppearance {
+                light = ink.usingColorSpace(.sRGB)!
+            }
+            NSAppearance(named: .darkAqua)!.performAsCurrentDrawingAppearance {
+                dark = ink.usingColorSpace(.sRGB)!
+            }
+            let onLight = contrast(light, white), onDark = contrast(dark, darkBar)
+            if onLight < 3 { fail(String(format: "\(severity) on a light bar: %.2f:1", onLight)) }
+            if onDark < 3 { fail(String(format: "\(severity) on a dark bar: %.2f:1", onDark)) }
+            print(String(format: "\(severity)  light %.1f:1  dark %.1f:1", onLight, onDark))
+        }
+
         // The controller's memo compares quantised loads; the ramp must be
         // deterministic for that to be a cache and not a coin flip.
         let a = LoadInk.color(forLoad: 0.91, neutral: neutrals[1].color)
@@ -116,6 +140,20 @@ enum InkCheck {
     private static func components(_ c: NSColor) -> [CGFloat] {
         let rgb = c.usingColorSpace(.deviceRGB)!
         return [rgb.redComponent, rgb.greenComponent, rgb.blueComponent]
+    }
+
+    /// WCAG contrast ratio between two colours.
+    private static func contrast(_ a: NSColor, _ b: NSColor) -> CGFloat {
+        func luminance(_ color: NSColor) -> CGFloat {
+            let c = color.usingColorSpace(.sRGB)!
+            func linear(_ v: CGFloat) -> CGFloat {
+                v <= 0.04045 ? v / 12.92 : pow((v + 0.055) / 1.055, 2.4)
+            }
+            return 0.2126 * linear(c.redComponent) + 0.7152 * linear(c.greenComponent)
+                + 0.0722 * linear(c.blueComponent)
+        }
+        let (x, y) = (luminance(a), luminance(b))
+        return (max(x, y) + 0.05) / (min(x, y) + 0.05)
     }
 
     private static func distance(_ a: NSColor, _ b: NSColor) -> CGFloat {

@@ -512,4 +512,21 @@ final class ProcessInspectorWindowController: NSObject, NSWindowDelegate {
         holdingSampling = false
         engine?.endLiveProcessSampling()
     }
+
+    /// A minimised, covered or other-Space inspector shows nothing, so it
+    /// gives full-rate process sampling back — a forgotten window would
+    /// otherwise cost more than the rest of the app for as long as it sat
+    /// there. The content is kept, so the selection survives, and the
+    /// background cadence keeps recording history until it is seen again.
+    func windowDidChangeOcclusionState(_ notification: Notification) {
+        guard let window, window.contentViewController != nil, let engine else { return }
+        let visible = window.occlusionState.contains(.visible)
+        if visible, !holdingSampling {
+            engine.beginLiveProcessSampling()
+            holdingSampling = true
+        } else if !visible, holdingSampling {
+            holdingSampling = false
+            engine.endLiveProcessSampling()
+        }
+    }
 }

@@ -35,9 +35,24 @@ public enum Severity: Sendable {
         }
     }
 
-    private static let elevatedColor = NSColor(Palette.elevated)
-    private static let highColor = NSColor(Palette.high)
-    private static let criticalColor = NSColor(Palette.critical)
+    private static let elevatedColor = menuBarInk(
+        dark: Palette.elevated, light: NSColor(srgbRed: 0.72, green: 0.50, blue: 0.00, alpha: 1))
+    private static let highColor = menuBarInk(
+        dark: Palette.high, light: NSColor(srgbRed: 0.85, green: 0.36, blue: 0.00, alpha: 1))
+    private static let criticalColor = menuBarInk(
+        dark: Palette.critical, light: NSColor(srgbRed: 0.85, green: 0.15, blue: 0.15, alpha: 1))
+
+    /// The palette is tuned for a dark bar. On a light one its yellow and
+    /// orange fall under 2:1 against the bar, and a warning that cannot be
+    /// read is no warning; the aqua variants are the same hues darkened past
+    /// 3:1 on white. Dynamic, so the ink follows the button's appearance at
+    /// the moment the readout is drawn — and still one instance per severity.
+    private static func menuBarInk(dark: Color, light: NSColor) -> NSColor {
+        let darkInk = NSColor(dark)
+        return NSColor(name: nil) { appearance in
+            appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? darkInk : light
+        }
+    }
 
     public static func load(_ fraction: Double) -> Severity {
         switch fraction {

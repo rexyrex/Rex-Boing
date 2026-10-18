@@ -47,7 +47,9 @@ public struct CPUCard: View {
 
             Divider().opacity(0.4)
 
-            ExpandButton(title: expanded ? "Less" : "More detail", expanded: $expanded)
+            ExpandButton(
+                title: expanded ? "Less" : "More detail", spokenTitle: "detail",
+                expanded: $expanded)
 
             if expanded { detail }
         }
@@ -171,7 +173,9 @@ public struct GPUCard: View {
 
                 Divider().opacity(0.4)
 
-                ExpandButton(title: expanded ? "Less" : "More detail", expanded: $expanded)
+                ExpandButton(
+                    title: expanded ? "Less" : "More detail", spokenTitle: "detail",
+                    expanded: $expanded)
 
                 if expanded { detail }
             } else {
@@ -262,7 +266,9 @@ public struct MemoryCard: View {
 
             Divider().opacity(0.4)
 
-            ExpandButton(title: expanded ? "Less" : "More detail", expanded: $expanded)
+            ExpandButton(
+                title: expanded ? "Less" : "More detail", spokenTitle: "detail",
+                expanded: $expanded)
 
             if expanded { detail }
         }

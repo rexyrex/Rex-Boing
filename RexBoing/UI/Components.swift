@@ -352,12 +352,17 @@ public struct Sparkline: View {
 /// one click away; none of it is in the way of the reading that is taken twenty
 /// times a day.
 public struct ExpandButton: View {
-    public init(title: String, expanded: Binding<Bool>) {
+    /// `spokenTitle` names what the row reveals for VoiceOver when the visible
+    /// title is a verb that flips with the state ("More detail" / "Less") —
+    /// prefixed with Show or Hide, the visible one read "Hide Less".
+    public init(title: String, spokenTitle: String? = nil, expanded: Binding<Bool>) {
         self.title = title
+        self.spokenTitle = spokenTitle
         self._expanded = expanded
     }
 
     public var title: String
+    public var spokenTitle: String?
     @Binding public var expanded: Bool
 
     public var body: some View {
@@ -376,7 +381,7 @@ public struct ExpandButton: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("\(expanded ? "Hide" : "Show") \(title)")
+        .accessibilityLabel("\(expanded ? "Hide" : "Show") \(spokenTitle ?? title)")
     }
 }
 

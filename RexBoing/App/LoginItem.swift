@@ -21,11 +21,13 @@ enum LoginItem {
         SMAppService.openSystemSettingsLoginItems()
     }
 
-    /// Applies the requested state and returns the effective state. Registration
-    /// can fail or require approval, and the preference UI must not claim the
-    /// item is enabled when ServiceManagement says otherwise.
+    /// Applies the requested state and returns the effective state, with the
+    /// reason when ServiceManagement refused. Registration can fail or require
+    /// approval, and the preference UI must not claim the item is enabled when
+    /// ServiceManagement says otherwise — nor snap the toggle back unexplained.
     @discardableResult
-    static func setEnabled(_ enabled: Bool) -> Bool {
+    static func setEnabled(_ enabled: Bool) -> (enabled: Bool, failure: String?) {
+        var failure: String?
         do {
             if enabled {
                 switch SMAppService.mainApp.status {
@@ -51,7 +53,8 @@ enum LoginItem {
             }
         } catch {
             log.error("Failed to \(enabled ? "register" : "unregister") login item: \(error.localizedDescription)")
+            failure = error.localizedDescription
         }
-        return isEnabled
+        return (isEnabled, failure)
     }
 }

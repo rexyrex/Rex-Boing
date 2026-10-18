@@ -3,7 +3,6 @@ import AppKit
 
 struct SettingsView: View {
     @EnvironmentObject private var preferences: Preferences
-    @EnvironmentObject private var engine: MetricsEngine
 
     var body: some View {
         TabView {
@@ -11,7 +10,7 @@ struct SettingsView: View {
                 .tabItem { Label("General", systemImage: "gearshape") }
             menuBarTab
                 .tabItem { Label("Menu Bar", systemImage: "menubar.rectangle") }
-            aboutTab
+            AboutTab()
                 .tabItem { Label("About", systemImage: "info.circle") }
         }
         .frame(width: 520, height: 560)
@@ -65,6 +64,11 @@ struct SettingsView: View {
                         Button("Open Login Items…") { LoginItem.openSystemSettings() }
                             .controlSize(.small)
                     }
+                } else if let failure = preferences.launchAtLoginFailure {
+                    Text("macOS didn't allow it: \(failure)")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
                 }
             }
         }
@@ -228,9 +232,18 @@ struct SettingsView: View {
         .accessibilityLabel("\(help): \(readout.label)")
     }
 
-    // MARK: - About
+}
 
-    private var aboutTab: some View {
+// MARK: - About
+
+/// The one tab that reads the engine, and the only view in the window that
+/// observes it. Held by the whole `SettingsView`, that observation re-evaluated
+/// every tab — the forms, the character gallery, the preview — once per
+/// sample, for the sake of the capability line here.
+private struct AboutTab: View {
+    @EnvironmentObject private var engine: MetricsEngine
+
+    var body: some View {
         VStack(spacing: 12) {
             Spacer()
 
