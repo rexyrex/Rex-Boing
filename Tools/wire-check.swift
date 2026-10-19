@@ -83,6 +83,9 @@ struct WireCheck {
                   "power survives and nothing is invented")
             check(back.disk.volumeName == "Macintosh HD" && back.disk.capacity == mac.disk.capacity,
                   "volume survives")
+            check(sample.disk?.volumes?.first?.used == nil && back.disk.reserved == 0
+                  && back.disk.fractionUsed == mac.disk.fractionUsed && mac.disk.fractionUsed == 0.6,
+                  "a Mac volume has no reserve and is as full as before")
             check(back.processes.leaders[.cpu]?.first?.cpuPercent == 120
                   && back.processes.leaders[.memory]?.first?.memoryBytes == 3 << 30,
                   "process rankings survive")
@@ -117,7 +120,7 @@ struct WireCheck {
          "power":{"packageWatts":12.2},
          "network":{"rx":10236,"tx":156972,"primaryInterface":"enp1s0","localAddress":"192.168.1.20",
                     "interfaces":[{"name":"enp1s0","rx":10236,"tx":156972,"speedMbps":2500,"up":true}]},
-         "disk":{"read":0,"write":0,"volumes":[{"name":"/","mount":"/","fs":"ext4","total":2013991550976,"available":1555545378816}]},
+         "disk":{"read":0,"write":0,"volumes":[{"name":"/","mount":"/","fs":"ext4","total":2013991550976,"available":1555545378816,"used":356000000000}]},
          "pressure":{"cpu":1.54,"memory":0,"io":0},
          "system":{"uptime":814624,"rebootRequired":true,"rebootReason":"kernel 6.8.0-147-generic installed","containers":31},
          "processes":{"count":742,"sampledAt":1792141977889,"interval":1,"gpuAttribution":false,
@@ -149,6 +152,26 @@ struct WireCheck {
         check(box.thermal.gpuCelsius == nil, "no GPU temperature is invented")
         check(box.power.packageWatts == 12.2 && box.power.totalWatts == 12.2, "package power drives the total")
         check(box.disk.volumeName == "/" && box.disk.capacity == 2_013_991_550_976, "root volume is primary")
+        // 5 % of the ext4 root is kept for root: df calls this disk 19 % full,
+        // and total − available would say 23 %.
+        let dfFull = 356e9 / (356e9 + 1_555_545_378_816)
+        check(box.disk.used == 356_000_000_000 && box.disk.reserved == 102_446_172_160
+              && abs(box.disk.fractionUsed - dfFull) < 1e-12,
+              "the root reserve is neither used nor available, as df counts it (\(box.disk.fractionUsed))")
+        check(abs((sample.disk?.volumes?.first?.fractionUsed ?? 0) - dfFull) < 1e-12,
+              "the Filesystems card reads the same fullness")
+        var older = WireVolume()
+        older.total = 100
+        older.available = 40
+        check(older.reserved == 0 && older.fractionUsed == 0.6, "an agent without used reads as before")
+        var odd = WireVolume()
+        odd.total = 100
+        odd.available = 40
+        odd.used = 90
+        check(odd.reserved == 0 && odd.fractionUsed == 0.6, "used beyond total − available is not believed")
+        odd.available = 150
+        odd.used = 0
+        check(odd.reserved == 0 && odd.fractionUsed == 0, "more available than the whole reads as empty")
         check(box.extras.pressure?.cpu == 1.54, "pressure stall is kept")
         check(box.extras.system?.rebootRequired == true && box.extras.system?.containers == 31,
               "system state is kept")

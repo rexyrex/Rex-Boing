@@ -342,10 +342,19 @@ public struct DiskMetrics: Sendable {
     public var volumeName: String = "Macintosh HD"
     public var capacity: UInt64 = 0
     public var available: UInt64 = 0
+    /// Space the filesystem keeps back, neither in use nor available: ext4
+    /// reserves 5 % for root by default. Zero on a Mac.
+    public var reserved: UInt64 = 0
 
-    public var used: UInt64 { capacity > available ? capacity - available : 0 }
+    public var used: UInt64 {
+        let unavailable = capacity > available ? capacity - available : 0
+        return unavailable > reserved ? unavailable - reserved : 0
+    }
+    /// Full as df counts it: in use out of what can still be used, so a
+    /// reserve no user can write to is not counted as data.
     public var fractionUsed: Double {
-        capacity > 0 ? min(1, Double(used) / Double(capacity)) : 0
+        let usable = Double(used) + Double(min(available, capacity))
+        return usable > 0 ? min(1, Double(used) / usable) : 0
     }
 }
 

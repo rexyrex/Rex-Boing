@@ -169,8 +169,29 @@ public struct WireVolume: Codable, Sendable, Identifiable {
     public var mount: String?
     public var fs: String?
     public var total, available: UInt64?
+    /// Bytes in use, where the filesystem counts them itself. Less than
+    /// total − available by whatever it keeps back (ext4's root reserve);
+    /// absent from macOS and Windows agents and from older Linux ones.
+    public var used: UInt64?
 
     public init() {}
+
+    /// The space neither in use nor available.
+    public var reserved: UInt64 {
+        let total = total ?? 0
+        let unavailable = total - min(available ?? 0, total)
+        guard let used, used < unavailable else { return 0 }
+        return unavailable - used
+    }
+
+    /// Full as df counts it: used / (used + available).
+    public var fractionUsed: Double {
+        var disk = DiskMetrics()
+        disk.capacity = total ?? 0
+        disk.available = available ?? 0
+        disk.reserved = reserved
+        return disk.fractionUsed
+    }
 }
 
 public struct WireDisk: Codable, Sendable {
@@ -610,10 +631,12 @@ extension DiskMetrics {
             volumeName = primary.name ?? primary.mount ?? "Disk"
             capacity = primary.total ?? 0
             available = primary.available ?? 0
+            reserved = primary.reserved
         } else if let previous {
             volumeName = previous.volumeName
             capacity = previous.capacity
             available = previous.available
+            reserved = previous.reserved
         } else {
             volumeName = "Disk"
         }
@@ -879,6 +902,7 @@ extension Snapshot {
                 volume.fs = "apfs"
                 volume.total = disk.capacity
                 volume.available = disk.available
+                if disk.reserved > 0 { volume.used = disk.used }
                 diskWire.volumes = [volume]
             }
         }
