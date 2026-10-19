@@ -497,7 +497,9 @@ public struct PowerCard: View {
         ) {
             if power.hasAny || battery.chargingWatts != nil {
                 HStack(spacing: 0) {
-                    if let watts = power.cpuWatts {
+                    // On a PC without a core counter the CPU reading is the
+                    // package's; it is shown once, below, under that name.
+                    if let watts = power.cpuWatts, !power.cpuIsPackage {
                         StatTile(label: "CPU", value: Format.watts(watts))
                     }
                     if let watts = power.gpuWatts {
@@ -508,9 +510,11 @@ public struct PowerCard: View {
                     }
                     // The SoC roll-up the components above belong to. The gap
                     // between this and the headline is everything else on the
-                    // board — display, SSD, fans.
+                    // board — display, SSD, fans. A PC's CPU package is no SoC.
                     if let watts = power.packageWatts {
-                        StatTile(label: "SoC", value: Format.watts(watts))
+                        StatTile(
+                            label: snapshot.host.isAppleSilicon ? "SoC" : "Package",
+                            value: Format.watts(watts))
                     }
                     if let watts = battery.chargingWatts {
                         StatTile(label: "Charging", value: Format.watts(watts))

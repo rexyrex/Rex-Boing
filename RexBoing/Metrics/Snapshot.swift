@@ -249,6 +249,9 @@ public struct PowerMetrics: Sendable {
     /// Live draw at the DC-in port while on mains, charging included.
     public var dcInWatts: Double?
     public var adapterWatts: Double?
+    /// A PC with no separate core counter: `cpuWatts` is the package reading
+    /// itself, standing in for the CPU card, not a second measurement.
+    public var cpuIsPackage = false
 
     /// The figure to headline and graph: whole-machine power from the best
     /// source this Mac has. The SoC package is the last resort — a partial

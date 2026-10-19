@@ -410,9 +410,11 @@ extension Snapshot {
         // On a PC the package is the CPU (plus an integrated GPU); without a
         // separate core counter it is the closest reading the CPU card has.
         // Apple silicon's package spans CPU, GPU and Neural Engine, so it is
-        // left where it is there.
-        if power.cpuWatts == nil, host?.isAppleSilicon != true {
-            power.cpuWatts = power.packageWatts
+        // left where it is there. The Windows agent sends its package as both
+        // already; either way it is one reading, which the power card shows once.
+        if host?.isAppleSilicon != true, let package = power.packageWatts {
+            if power.cpuWatts == nil { power.cpuWatts = package }
+            power.cpuIsPackage = power.cpuWatts == package
         }
         if let wire = sample.network { network = NetworkMetrics(wire: wire) }
         if let wire = sample.disk {

@@ -79,7 +79,7 @@ struct WireCheck {
             check(back.thermal.sensors.count == 1 && back.thermal.groups.count == 1,
                   "sensors survive and are grouped")
             check(back.thermal.fans.first?.maxRPM == 6000, "fans survive")
-            check(back.power.packageWatts == 12.5 && back.power.cpuWatts == nil,
+            check(back.power.packageWatts == 12.5 && back.power.cpuWatts == nil && !back.power.cpuIsPackage,
                   "power survives and nothing is invented")
             check(back.disk.volumeName == "Macintosh HD" && back.disk.capacity == mac.disk.capacity,
                   "volume survives")
@@ -151,6 +151,21 @@ struct WireCheck {
               "fan readings and labels are kept")
         check(box.thermal.gpuCelsius == nil, "no GPU temperature is invented")
         check(box.power.packageWatts == 12.2 && box.power.totalWatts == 12.2, "package power drives the total")
+        check(box.power.cpuWatts == 12.2 && box.power.cpuIsPackage,
+              "a PC's package stands in for its CPU, as one reading")
+        for (power, cpu, isPackage, what) in [
+            (#"{"cpuWatts":30.5,"packageWatts":30.5}"#, 30.5, true,
+             "the Windows agent's package, sent as both, is one reading"),
+            (#"{"cpuWatts":3.1,"packageWatts":7.4}"#, 3.1, false,
+             "a readable core counter is the CPU's own reading"),
+        ] {
+            guard case .sample(let pc)? = WireMessage.decode(Data(#"{"type":"sample","power":\#(power)}"#.utf8)) else {
+                check(false, what)
+                continue
+            }
+            let reading = Snapshot(sample: pc, host: host).power
+            check(reading.cpuWatts == cpu && reading.cpuIsPackage == isPackage, what)
+        }
         check(box.disk.volumeName == "/" && box.disk.capacity == 2_013_991_550_976, "root volume is primary")
         // 5 % of the ext4 root is kept for root: df calls this disk 19 % full,
         // and total − available would say 23 %.
