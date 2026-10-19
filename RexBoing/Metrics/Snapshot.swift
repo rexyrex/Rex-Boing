@@ -405,6 +405,119 @@ public struct ProcessRow: Identifiable, Hashable, Sendable {
     // Identity for ForEach/Table is still the pid, via `Identifiable`.
 }
 
+extension ProcessRow {
+    /// The name a process row shows. On a server where every app is "node",
+    /// the interpreter's name tells them apart no better than the pid, so a
+    /// row with a command line adds the script it runs: "node
+    /// …/admin-hub/server.js", "python3 -m http.server". Only remote rows
+    /// carry a command line; this Mac's rows keep their name.
+    public var displayName: String {
+        guard let commandLine, let script = Self.script(of: name, in: commandLine) else { return name }
+        return name + " " + script
+    }
+
+    /// The script an interpreter named `name` runs, from its command line:
+    /// the first word that is neither an option nor an option's value.
+    /// Inline code (`-c`, `-e`) has no script to show.
+    static func script(of name: String, in commandLine: String) -> String? {
+        guard let interpreter = Interpreter(name) else { return nil }
+        var words = commandLine.split(separator: " ", maxSplits: 24)[...]
+        // A script started through its shebang is already named after itself
+        // ("gunicorn"), and a renamed process is not running the interpreter.
+        guard let argv0 = words.popFirst(),
+              Interpreter(String(argv0.split(separator: "/").last ?? argv0)) == interpreter
+        else { return nil }
+        while let word = words.popFirst() {
+            if word == "--" { break }
+            if interpreter.inline.contains(word) { return nil }
+            if interpreter.scriptAfter.contains(word) {
+                guard let script = words.popFirst() else { return nil }
+                // A module is named, not found at a path.
+                return word == "-m" && interpreter == .python
+                    ? "-m " + script : shortened(script)
+            }
+            if interpreter.takesValue.contains(word) {
+                _ = words.popFirst()
+            } else if !word.hasPrefix("-") {
+                return shortened(word)
+            }
+        }
+        return words.first.map(shortened)
+    }
+
+    /// The file and its folder, which is what names the app: "…/admin-hub/
+    /// server.js". One folder more when that one is only "server" or "src" —
+    /// a box of game servers is otherwise a column of "…/server/index.js".
+    static func shortened<S: StringProtocol>(_ path: S) -> String {
+        let parts = path.split(separator: "/")
+        var keep = 2
+        if parts.count > 2, genericFolders.contains(parts[parts.count - 2].lowercased()) { keep = 3 }
+        guard parts.count > keep else { return String(path) }
+        return "…/" + parts.suffix(keep).joined(separator: "/")
+    }
+
+    private static let genericFolders: Set<String> = [
+        "server", "src", "dist", "lib", "bin", "build", "app", "scripts",
+    ]
+
+    /// Interpreters whose processes are all named alike, and the options
+    /// that decide where on the command line the script is.
+    enum Interpreter {
+        case node, python, java, ruby, perl, php
+
+        /// "python3.12", "php8.3" and "nodejs" are the same interpreters.
+        init?(_ name: String) {
+            var base = Substring(name)
+            while let last = base.last, last.isNumber || last == "." { base.removeLast() }
+            switch base {
+            case "node", "nodejs": self = .node
+            case "python", "pypy": self = .python
+            case "java": self = .java
+            case "ruby": self = .ruby
+            case "perl": self = .perl
+            case "php": self = .php
+            default: return nil
+            }
+        }
+
+        /// Options whose value is the script, or the module standing in for one.
+        var scriptAfter: Set<Substring> {
+            switch self {
+            case .python: return ["-m"]
+            case .java: return ["-jar", "-m", "--module"]
+            case .php: return ["-f"]
+            case .node, .ruby, .perl: return []
+            }
+        }
+
+        /// Options followed by a value that is not the script.
+        var takesValue: Set<Substring> {
+            switch self {
+            case .node: return ["-r", "--require", "--import", "--loader", "--experimental-loader", "-C", "--conditions", "--title"]
+            case .python: return ["-W", "-X"]
+            case .java:
+                return ["-cp", "-classpath", "--class-path", "-p", "--module-path", "--upgrade-module-path",
+                        "--add-modules", "--add-opens", "--add-exports", "--add-reads", "--limit-modules", "--patch-module"]
+            case .ruby: return ["-r", "-I", "-C"]
+            case .perl: return ["-I"]
+            case .php: return ["-c", "-d", "-z", "-S", "-t"]
+            }
+        }
+
+        /// Options whose value is code to run in place of a script.
+        var inline: Set<Substring> {
+            switch self {
+            case .node: return ["-e", "--eval", "-p", "--print"]
+            case .python: return ["-c"]
+            case .ruby: return ["-e"]
+            case .perl: return ["-e", "-E"]
+            case .php: return ["-r"]
+            case .java: return []
+            }
+        }
+    }
+}
+
 public struct ProcessMetrics: Sendable {
     /// How deep each per-metric ranking goes.
     ///

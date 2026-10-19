@@ -210,7 +210,7 @@ private struct ProcessRowView: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 5) {
-                    Text(row.name)
+                    Text(row.displayName)
                         .font(.system(size: 11))
                         .lineLimit(1)
                         .truncationMode(.middle)
@@ -231,7 +231,7 @@ private struct ProcessRowView: View {
         .onHover { isHovering = $0 }
         .help(tooltip)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(row.name), \(metric.rawValue) \(metric.format(row))")
+        .accessibilityLabel("\(row.displayName), \(metric.rawValue) \(metric.format(row))")
         .contextMenu { ProcessActions(row: row) }
     }
 

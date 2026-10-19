@@ -194,6 +194,35 @@ struct WireCheck {
         let top = box.processes.leaders[.cpu]?.first
         check(top?.name == "node" && top?.user == "alex" && top?.commandLine == "node server.js",
               "remote process rows keep user and command line")
+        check(top?.displayName == "node server.js", "an interpreter's row names its script")
+        check(ProcessRow(pid: 7, name: "node").displayName == "node", "a row from this Mac keeps its name")
+        // The NUC's pm2 apps, containers and tools, as its agent reports them.
+        for (name, command, shown) in [
+            ("node", "node /home/rexyrex/vibeprojects/admin-hub/server.js", "node …/admin-hub/server.js"),
+            ("node", "node /home/rexyrex/games/portal/server/index.js", "node …/portal/server/index.js"),
+            ("node", "node --abort_on_uncaught_exception --max_old_space_size=250 index.js", "node index.js"),
+            ("node", "node -r dotenv/config dist/main.js", "node dist/main.js"),
+            ("node", "node -e console.log(1)", "node"),
+            ("node", "PM2 v7.0.4: God Daemon (/home/rexyrex/.pm2)", "node"),
+            ("python3", "/usr/bin/python3 /home/rexyrex/vibeprojects/photo-migration-review/server.py --host 0.0.0.0",
+             "python3 …/photo-migration-review/server.py"),
+            ("python", "/home/rexyrex/vibeprojects/memories/.venv/bin/python /home/rexyrex/vibeprojects/memories/server.py",
+             "python …/memories/server.py"),
+            ("python3", "/lsiopy/bin/python3 -u /app/bazarr/bin/bazarr/main.py --no-update", "python3 …/bazarr/main.py"),
+            ("python3", "python3 /app/bazarr/bin/bazarr.py --no-update", "python3 …/bazarr/bin/bazarr.py"),
+            ("python", "/usr/local/bin/python -u /app/flaresolverr.py", "python /app/flaresolverr.py"),
+            ("python", "python -m lifecycle.worker_process 1000 /dev/shm/authentik-worker-1000.sock",
+             "python -m lifecycle.worker_process"),
+            ("python3.12", "python3.12 -c import time", "python3.12"),
+            ("gunicorn", "/usr/bin/python3 /usr/bin/gunicorn app:main", "gunicorn"),
+            ("java", "/usr/bin/java -Xmx512m -cp /opt/app/lib/* -jar /opt/jenkins/jenkins.war",
+             "java …/jenkins/jenkins.war"),
+            ("java", "java -cp /opt/app/lib/* org.example.Main", "java org.example.Main"),
+        ] {
+            var remote = ProcessRow(pid: 7, name: name)
+            remote.commandLine = command
+            check(remote.displayName == shown, "\(name) shows as \(shown) (\(remote.displayName))")
+        }
         check(box.host.osVersion == "Ubuntu 24.04.5 LTS" && box.host.modelName == "NUC15CRHU7",
               "host description reads from hello")
 
