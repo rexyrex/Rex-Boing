@@ -36,6 +36,14 @@ enum RenderIcon {
         print("wrote icons to \(outDir)")
     }
 
+    /// Shadows are in device pixels, not the context's units, so each is
+    /// scaled to the size being rendered: otherwise a 16-pixel icon gets the
+    /// 1024-pixel icon's blur and turns grey round the edges.
+    static func shadow(_ cg: CGContext, y: CGFloat, blur: CGFloat, color: CGColor) {
+        let k = cg.ctm.a
+        cg.setShadow(offset: CGSize(width: 0, height: y * k), blur: blur * k, color: color)
+    }
+
     static func draw(in cg: CGContext, visual: Visualizer, time: Double) {
         let inset: CGFloat = 100
         let side: CGFloat = 1024 - 2 * inset
@@ -45,8 +53,7 @@ enum RenderIcon {
 
         // Drop shadow under the plate, as the system icons have.
         cg.saveGState()
-        cg.setShadow(offset: CGSize(width: 0, height: -12), blur: 28,
-                     color: CGColor(red: 0, green: 0, blue: 0, alpha: 0.30))
+        shadow(cg, y: -12, blur: 28, color: CGColor(red: 0, green: 0, blue: 0, alpha: 0.30))
         cg.addPath(path)
         cg.setFillColor(red: 0.20, green: 0.42, blue: 0.85, alpha: 1)
         cg.fillPath()
@@ -82,13 +89,20 @@ enum RenderIcon {
         let rect = CGRect(x: plate.midX - width / 2, y: plate.midY - height / 2 - 8,
                           width: width, height: height)
         // Figure shadow so the white reads against the lighter top of the plate.
+        //
+        // In a transparency layer of its own because the eye is cut out of
+        // the head (the menu bar shows through it): drawn straight onto the
+        // plate, it would cut through that too, and look black or blank
+        // depending on what the icon sits on. The shadow is set inside the
+        // layer, so each part still shades the ones behind it.
         cg.saveGState()
-        cg.setShadow(offset: CGSize(width: 0, height: -10), blur: 24,
-                     color: CGColor(red: 0.05, green: 0.10, blue: 0.35, alpha: 0.45))
+        cg.beginTransparencyLayer(auxiliaryInfo: nil)
+        shadow(cg, y: -10, blur: 24, color: CGColor(red: 0.05, green: 0.10, blue: 0.35, alpha: 0.45))
         cg.translateBy(x: rect.minX, y: rect.minY)
         cg.scaleBy(x: rect.width / canvas.width, y: rect.height / canvas.height)
         visual.draw(in: cg, rect: CGRect(origin: .zero, size: canvas),
                     time: time, load: 0.45, color: .white)
+        cg.endTransparencyLayer()
         cg.restoreGState()
         cg.restoreGState()
     }
