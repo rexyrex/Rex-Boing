@@ -6,12 +6,17 @@ struct RexBoingApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
 
     var body: some Scene {
-        // Rex Boing lives entirely in the menu bar. `Settings` gives the app a
-        // valid (empty) scene graph; the status item and its popover are built
-        // in the delegate. The scene also wires the app menu's "Settings…"
-        // item to Cmd-, — left alone, that item would present this scene as a
-        // blank window whenever one of the app's windows is key. Replace it so
-        // the shortcut opens the real settings window instead.
+        // Rex Boing lives in the menu bar; its windows — Monitor, Settings,
+        // the process breakdown — are built on demand in AppKit. `Settings`
+        // gives the app a valid (empty) scene graph; the status item and its
+        // popover are built in the delegate. The scene also wires the app
+        // menu's "Settings…" item to Cmd-, — left alone, that item would
+        // present this scene as a blank window whenever one of the app's
+        // windows is key. Replace it so the shortcut opens the real settings
+        // window instead.
+        //
+        // The menus only show while the Monitor window has made the app an
+        // ordinary one, which is when a Window menu is wanted.
         Settings {
             EmptyView()
         }
@@ -19,6 +24,13 @@ struct RexBoingApp: App {
             CommandGroup(replacing: .appSettings) {
                 Button("Settings…") { delegate.openSettings() }
                     .keyboardShortcut(",")
+            }
+            CommandGroup(before: .windowList) {
+                Button("Monitor") { delegate.openMonitor() }
+                    .keyboardShortcut("1")
+                Button("Process Breakdown") { delegate.openProcessBreakdown() }
+                    .keyboardShortcut("2")
+                Divider()
             }
         }
     }
@@ -60,6 +72,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.engine = engine
         self.statusItem = StatusItemController(engine: engine)
         self.statsBroadcaster = StatsBroadcaster(engine: engine)
+
+        if Preferences.shared.openMonitorAtLaunch {
+            MonitorWindowController.shared.show(engine: engine)
+        }
     }
 
     /// Launch order, oldest first; the pid breaks a tie (or a missing date),
@@ -73,14 +89,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         false
     }
 
-    /// Opening the app again — from Finder, Spotlight or Launchpad — while it
-    /// is running shows Settings. The status item can be out of sight (a full
-    /// menu bar hides it behind the notch, a menu-bar manager can collapse
-    /// it, or too many readouts can push it off), and without this the open
-    /// did nothing at all, leaving no way to reach Settings or Quit. The flag
-    /// is no guide here: the status item's own window can count as visible.
+    /// Opening the app again — from Finder, Spotlight, Launchpad or its Dock
+    /// icon — while it is running shows the Monitor window. The status item
+    /// can be out of sight (a full menu bar hides it behind the notch, a
+    /// menu-bar manager can collapse it, or too many readouts can push it
+    /// off), and without this the open did nothing at all, leaving no way to
+    /// reach the readings, Settings or Quit; the window has all three. The
+    /// flag is no guide here: the status item's own window can count as
+    /// visible.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        openSettings()
+        openMonitor()
         return false
     }
 
@@ -93,5 +111,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func openSettings() {
         guard let engine else { return }
         SettingsWindowController.shared.show(engine: engine)
+    }
+
+    func openMonitor() {
+        guard let engine else { return }
+        MonitorWindowController.shared.show(engine: engine)
+    }
+
+    func openProcessBreakdown() {
+        guard let engine else { return }
+        let latest = engine.processHistory.samples.last?.timestamp ?? Date()
+        ProcessInspectorWindowController.shared.show(engine: engine, metric: .cpu, at: latest)
     }
 }

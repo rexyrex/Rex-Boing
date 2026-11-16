@@ -176,13 +176,13 @@ private struct AppUsageRowView: View {
                 .resizable()
                 .interpolation(.high)
                 .aspectRatio(contentMode: .fit)
-                .frame(width: 15, height: 15)
+                .dashFrame(width: 15, height: 15)
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 5) {
                     Text(app.attribution.displayName)
-                        .font(.system(size: 11))
+                        .dashFont(11)
                         .lineLimit(1)
                         .truncationMode(.middle)
                     Spacer(minLength: 4)

@@ -134,43 +134,64 @@ struct DashboardView: View {
 
             Spacer(minLength: 4)
 
-            Button {
-                SettingsWindowController.shared.show(engine: engine)
-            } label: {
-                Image(systemName: "gearshape")
-                    .font(.system(size: 12.5))
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(.secondary)
-            .help("Settings")
-            .accessibilityLabel("Settings")
-
-            Menu {
-                // The breakdown is otherwise reachable only by clicking a
-                // graph, which nothing on the panel announces. Opened on the
-                // newest sample, following the stream, so it needs no instant.
-                Button("Process Breakdown…") {
-                    let latest = engine.processHistory.samples.last?.timestamp ?? Date()
-                    ProcessInspectorWindowController.shared.show(
-                        engine: engine, metric: .cpu, at: latest)
+            HStack(spacing: 2) {
+                // The same readings in a window that stays open — the way out
+                // of a panel that closes the moment anything else is clicked.
+                Button {
+                    MonitorWindowController.shared.show(engine: engine)
+                } label: {
+                    Image(systemName: "macwindow")
+                        .font(.system(size: 12.5))
                 }
-                Divider()
-                Button("About Rex Boing") { AboutPanel.show() }
-                Divider()
-                Button("Quit Rex Boing") { NSApp.terminate(nil) }
-            } label: {
-                Image(systemName: "ellipsis.circle")
-                    .font(.system(size: 12.5))
+                .buttonStyle(IconButtonStyle())
+                .help("Open the Monitor window")
+                .accessibilityLabel("Open the Monitor window")
+
+                Button {
+                    SettingsWindowController.shared.show(engine: engine)
+                } label: {
+                    Image(systemName: "gearshape")
+                        .font(.system(size: 12.5))
+                }
+                .buttonStyle(IconButtonStyle())
+                .help("Settings")
+                .accessibilityLabel("Settings")
+
+                moreMenu
             }
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
-            .fixedSize()
-            .foregroundStyle(.secondary)
-            .help("More")
-            .accessibilityLabel("More options")
         }
         .padding(.horizontal, 13)
         .padding(.vertical, 10)
+    }
+
+    private var moreMenu: some View {
+        Menu {
+            Button("Monitor Window") {
+                MonitorWindowController.shared.show(engine: engine)
+            }
+            // The breakdown is otherwise reachable only by clicking a
+            // graph, which nothing on the panel announces. Opened on the
+            // newest sample, following the stream, so it needs no instant.
+            Button("Process Breakdown…") {
+                let latest = engine.processHistory.samples.last?.timestamp ?? Date()
+                ProcessInspectorWindowController.shared.show(
+                    engine: engine, metric: .cpu, at: latest)
+            }
+            Divider()
+            Button("About Rex Boing") { AboutPanel.show() }
+            Divider()
+            Button("Quit Rex Boing") { NSApp.terminate(nil) }
+        } label: {
+            Image(systemName: "ellipsis.circle")
+                .font(.system(size: 12.5))
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .foregroundStyle(.secondary)
+        .frame(width: 26, height: 24)
+        .help("More")
+        .accessibilityLabel("More options")
     }
 
     /// The name set as a mark rather than a label: rounded and bold like the

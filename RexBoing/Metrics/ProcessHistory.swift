@@ -74,10 +74,11 @@ public struct ProcessSample: Identifiable, Sendable {
 @MainActor
 public final class ProcessHistory: ObservableObject {
     /// Matched to `MetricsHistory.capacity` so the inspector can reach back at
-    /// least as far as the graph that opens it. In practice it reaches much
-    /// further: while the dashboard is closed the process table is sampled
-    /// roughly every six seconds rather than every tick, so the same number of slots
-    /// covers minutes rather than a minute and a half.
+    /// least as far as the graph that opens it — the Monitor window's graphs
+    /// can show the whole buffer. In practice it reaches much further: while
+    /// nothing is on screen the process table is sampled roughly every six
+    /// seconds rather than every tick, so the same number of slots covers an
+    /// hour rather than ten minutes.
     public static let capacity = MetricsHistory.capacity
 
     @Published public private(set) var samples: [ProcessSample] = []

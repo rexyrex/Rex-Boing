@@ -29,6 +29,7 @@ let package = Package(
                 "Metrics/MetricsEngine.swift",
                 "StatusBar/StatusItemController.swift",
                 "UI/DashboardView.swift",
+                "UI/MonitorWindow.swift",
                 "UI/ProcessInspector.swift",
                 "UI/SettingsView.swift",
             ],

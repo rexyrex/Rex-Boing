@@ -57,6 +57,22 @@ extension EnvironmentValues {
     }
 }
 
+// MARK: - Graph span
+
+/// How many of the newest samples a graph plots. The history keeps
+/// `MetricsHistory.capacity` of them; the popover shows the last minute and a
+/// half, and a window can ask for more.
+private struct GraphSpanKey: EnvironmentKey {
+    public static let defaultValue = MetricsHistory.compactSpan
+}
+
+extension EnvironmentValues {
+    public var graphSpan: Int {
+        get { self[GraphSpanKey.self] }
+        set { self[GraphSpanKey.self] = newValue }
+    }
+}
+
 // MARK: - Sparkline
 
 /// Filled history graph. Values are normalised against either a caller-supplied
@@ -72,7 +88,8 @@ extension EnvironmentValues {
 public struct Sparkline: View {
     public init(
         values: [Double], accent: Color, ceiling: Double? = 1, lineWidth: CGFloat = 1.4,
-        scaleCaption: String? = nil, timestamps: [Date] = [],
+        scaleCaption: String? = nil, peakCaption: ((Double) -> String)? = nil,
+        timestamps: [Date] = [],
         format: @escaping (Double) -> String = { Format.percent($0, decimals: 1) },
         inspectorMetric: ProcessMetric? = nil
     ) {
@@ -81,6 +98,7 @@ public struct Sparkline: View {
         self.ceiling = ceiling
         self.lineWidth = lineWidth
         self.scaleCaption = scaleCaption
+        self.peakCaption = peakCaption
         self.timestamps = timestamps
         self.format = format
         self.inspectorMetric = inspectorMetric
@@ -94,6 +112,10 @@ public struct Sparkline: View {
     /// Printed in the top-left corner. An autoscaled graph is unreadable
     /// without it — the same shape means 2 KB/s or 2 GB/s.
     public var scaleCaption: String?
+    /// The same corner, captioned from the peak of what is actually plotted —
+    /// the graph may be showing less than the series it was handed, and a
+    /// caption worked out by the caller would be the peak of the whole of it.
+    public var peakCaption: ((Double) -> String)?
     /// When each of `values` was sampled, same order and length. Supplied, the
     /// hover readout can say which second the pointer is over as well as what
     /// the reading was.
@@ -112,6 +134,8 @@ public struct Sparkline: View {
     public var inspectorMetric: ProcessMetric?
 
     @Environment(\.inspectGraph) private var inspectGraph
+    @Environment(\.graphSpan) private var span
+    @Environment(\.dashboardStyle) private var style
 
     /// Pointer position in the graph's own coordinates, `nil` when away.
     @State private var pointer: CGPoint?
@@ -128,18 +152,47 @@ public struct Sparkline: View {
         inspectorMetric != nil && inspectGraph.isAvailable && !timestamps.isEmpty
     }
 
-    private var upperBound: Double {
+    /// The part of the series on show: the newest `span` samples.
+    private struct Plot {
+        var values: [Double]
+        var timestamps: [Date]
+        var slots: Int
+
+        var peak: Double { values.max() ?? 0 }
+    }
+
+    /// Resolved once per pass and handed down, like the ranked rows of the
+    /// process card — the buffers are rebuilt as arrays on every read.
+    private var plot: Plot {
+        let slots = max(2, span)
+        guard values.count > slots else {
+            return Plot(values: values, timestamps: timestamps, slots: slots)
+        }
+        let start = values.count - slots
+        // Timestamps ride the same indices wherever they were supplied.
+        let times = timestamps.count == values.count
+            ? Array(timestamps[start...]) : timestamps
+        return Plot(values: Array(values[start...]), timestamps: times, slots: slots)
+    }
+
+    private func upperBound(of plot: Plot) -> Double {
         if let ceiling { return max(ceiling, 0.0001) }
-        return max(values.max() ?? 1, 0.0001)
+        return max(plot.values.max() ?? 1, 0.0001)
     }
 
     public var body: some View {
+        let plot = self.plot
+        let caption = peakCaption.map { $0(plot.peak) } ?? scaleCaption
         // `Canvas` rather than `GeometryReader` + shapes. The trace is pure
         // drawing with no child views, and routing it through a layout
         // container made every sample relayout the panel's whole view tree.
-        Canvas(opaque: false, rendersAsynchronously: false) { context, size in
+        return Canvas(opaque: false, rendersAsynchronously: false) { context, size in
             drawnSize.value = size
-            let points = coordinates(in: size, bound: upperBound)
+            // A window's graphs are tall enough to be read against a scale,
+            // so they get one: quarter rules, drawn under the trace where the
+            // card shows through and scored into it where it does not.
+            if style.isWindow { drawRules(in: size, context: &context, over: false) }
+            let points = coordinates(of: plot, in: size, bound: upperBound(of: plot))
             guard points.count > 1 else { return }
 
             var line = Path()
@@ -171,17 +224,19 @@ public struct Sparkline: View {
                 Path(CGRect(x: 0, y: size.height - 1.5, width: size.width, height: 1.5)),
                 with: .color(accent))
 
+            if style.isWindow { drawRules(in: size, context: &context, over: true) }
+
             if let pointer, let index = nearestIndex(to: pointer.x, in: points) {
-                drawMarker(at: index, points: points, in: size, context: &context)
+                drawMarker(at: index, plot: plot, points: points, in: size, context: &context)
             }
         }
         .overlay(alignment: .topLeading) {
             // The caption steps aside while the pointer is down: both it and
             // the readout want the top of the graph, and on a 190-point-wide
             // trace they would sit on top of each other.
-            if let scaleCaption, pointer == nil {
-                Text(scaleCaption)
-                    .font(.system(size: 8.5))
+            if let caption, pointer == nil {
+                Text(caption)
+                    .font(.system(size: style.scaled(8.5)))
                     .monospacedDigit()
                     .foregroundStyle(.secondary)
                     // The caption used to sit over near-empty space. Against a
@@ -224,17 +279,35 @@ public struct Sparkline: View {
         .accessibilityAction { if let last = timestamps.last { inspect(at: last) } }
     }
 
+    /// Rules at a quarter, a half and three quarters of the scale. Under the
+    /// trace they are a hairline of the label colour; over it they are the
+    /// card's own ground showing through, so the fill reads as scored rather
+    /// than struck out.
+    private func drawRules(in size: CGSize, context: inout GraphicsContext, over: Bool) {
+        var rules = Path()
+        for fraction in [0.25, 0.5, 0.75] {
+            let y = (size.height * CGFloat(fraction)).rounded() + 0.5
+            rules.move(to: CGPoint(x: 0, y: y))
+            rules.addLine(to: CGPoint(x: size.width, y: y))
+        }
+        context.stroke(
+            rules,
+            with: .color(over ? Palette.graphMarker.opacity(0.16) : Color.primary.opacity(0.07)),
+            style: StrokeStyle(lineWidth: 1, dash: over ? [] : [2, 3]))
+    }
+
     /// Resolves the click to the sample the crosshair was sitting on, so the
     /// window opens on the instant the user was actually pointing at rather
     /// than one rounded differently from the readout they just read.
     private func selectSampleUnderPointer() {
         let size = drawnSize.value
         guard let pointer, size.width > 0 else { return }
-        let points = coordinates(in: size, bound: upperBound)
+        let plot = self.plot
+        let points = coordinates(of: plot, in: size, bound: upperBound(of: plot))
         guard let index = nearestIndex(to: pointer.x, in: points),
-              index < timestamps.count
+              index < plot.timestamps.count
         else { return }
-        inspect(at: timestamps[index])
+        inspect(at: plot.timestamps[index])
     }
 
     private func inspect(at date: Date) {
@@ -250,7 +323,7 @@ public struct Sparkline: View {
 
     /// Crosshair, dot and label for the sample nearest the pointer.
     private func drawMarker(
-        at index: Int, points: [CGPoint], in size: CGSize,
+        at index: Int, plot: Plot, points: [CGPoint], in size: CGSize,
         context: inout GraphicsContext
     ) {
         let point = points[index]
@@ -273,13 +346,13 @@ public struct Sparkline: View {
         // is the caption's natural one line rather than however many lines it
         // would wrap to inside the graph.
         let unbounded = CGSize(width: 1000, height: 100)
-        var label = context.resolve(styled(caption(for: index, form: .full)))
+        var label = context.resolve(styled(caption(for: index, in: plot, form: .full)))
         var text = label.measure(in: unbounded)
         // The throughput graphs are 190 points wide, which a wall-clock time
         // and a long rate do not always both fit into. Rather than wrap or
         // spill over the card, the caption gives up precision a step at a time.
         for form in [CaptionForm.shortTime, .valueOnly] where text.width + 7 > size.width {
-            label = context.resolve(styled(caption(for: index, form: form)))
+            label = context.resolve(styled(caption(for: index, in: plot, form: form)))
             text = label.measure(in: unbounded)
         }
 
@@ -294,22 +367,22 @@ public struct Sparkline: View {
 
     private func styled(_ caption: String) -> Text {
         Text(caption)
-            .font(.system(size: 8.5, weight: .medium))
+            .font(.system(size: style.scaled(8.5), weight: .medium))
             .monospacedDigit()
     }
 
     private enum CaptionForm {
         case full
-        /// Minutes and seconds only. The window is 90 samples long, so the hour
-        /// is never in question and dropping it buys back a third of the width.
+        /// Minutes and seconds only. The window is minutes long at most, so the
+        /// hour is never in question and dropping it buys back a third of the width.
         case shortTime
         case valueOnly
     }
 
-    private func caption(for index: Int, form: CaptionForm) -> String {
-        let reading = format(values[index])
-        guard index < timestamps.count, form != .valueOnly else { return reading }
-        let date = timestamps[index]
+    private func caption(for index: Int, in plot: Plot, form: CaptionForm) -> String {
+        let reading = format(plot.values[index])
+        guard index < plot.timestamps.count, form != .valueOnly else { return reading }
+        let date = plot.timestamps[index]
         let time = form == .full ? Format.clock(date) : Format.clockShort(date)
         return "\(time) · \(reading)"
     }
@@ -325,11 +398,12 @@ public struct Sparkline: View {
         return min(points.count - 1, max(0, Int(offset.rounded())))
     }
 
-    private func coordinates(in size: CGSize, bound: Double) -> [CGPoint] {
+    private func coordinates(of plot: Plot, in size: CGSize, bound: Double) -> [CGPoint] {
+        let values = plot.values
         guard values.count > 1 else { return [] }
-        // Always plot against the full capacity so a partially filled buffer
+        // Always plot against the full span so a partially filled buffer
         // grows in from the left rather than stretching.
-        let slots = max(values.count, MetricsHistory.capacity)
+        let slots = max(values.count, plot.slots)
         let step = size.width / CGFloat(slots - 1)
         let leadingOffset = CGFloat(slots - values.count) * step
 
@@ -341,6 +415,40 @@ public struct Sparkline: View {
         }
     }
 
+}
+
+// MARK: - Header buttons
+
+/// The symbol buttons along a panel's header: borderless and quiet at rest,
+/// a tinted plate under the pointer. A bare glyph gives no sign of being a
+/// button until it is clicked, and in a row of three there is no telling
+/// where one target ends and the next begins.
+public struct IconButtonStyle: ButtonStyle {
+    public init() {}
+
+    public func makeBody(configuration: Configuration) -> some View {
+        IconButtonBody(configuration: configuration)
+    }
+}
+
+private struct IconButtonBody: View {
+    let configuration: ButtonStyleConfiguration
+
+    @State private var isHovering = false
+    @Environment(\.isEnabled) private var isEnabled
+
+    var body: some View {
+        configuration.label
+            .foregroundStyle(isHovering ? Color.primary : Color.secondary)
+            .frame(width: 26, height: 24)
+            .background(
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(Color.primary.opacity(
+                        configuration.isPressed ? 0.15 : isHovering ? 0.08 : 0)))
+            .contentShape(Rectangle())
+            .opacity(isEnabled ? 1 : 0.4)
+            .onHover { isHovering = $0 }
+    }
 }
 
 // MARK: - Disclosure
@@ -371,10 +479,10 @@ public struct ExpandButton: View {
         } label: {
             HStack(spacing: 4) {
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 8, weight: .bold))
+                    .dashFont(8, weight: .bold)
                     .rotationEffect(.degrees(expanded ? 90 : 0))
                 Text(title)
-                    .font(.system(size: 10, weight: .medium))
+                    .dashFont(10, weight: .medium)
                 Spacer()
             }
             .foregroundStyle(.secondary)
@@ -450,10 +558,10 @@ public struct SegmentedBar: View {
                                 .fill(segment.color)
                                 .frame(width: 6, height: 6)
                             Text(segment.label)
-                                .font(.system(size: 9.5))
+                                .dashFont(9.5)
                                 .foregroundStyle(.secondary)
                             Text(Format.bytes(segment.bytes))
-                                .font(.system(size: 9.5, weight: .medium))
+                                .dashFont(9.5, weight: .medium)
                                 .monospacedDigit()
                         }
                     }
@@ -500,7 +608,7 @@ public struct CoreGrid: View {
                     .frame(height: 26)
 
                     Text(kind == .unknown ? "\(index)" : kind.rawValue)
-                        .font(.system(size: 7, weight: .semibold))
+                        .dashFont(7, weight: .semibold)
                         .foregroundStyle(.tertiary)
                 }
                 .help("Core \(index) \(kind.description) — \(Format.percent(load))")
@@ -532,9 +640,9 @@ public struct StatRow: View {
         HStack(spacing: 5) {
             if let symbol {
                 Image(systemName: symbol)
-                    .font(.system(size: 9))
+                    .dashFont(9)
                     .foregroundStyle(.tertiary)
-                    .frame(width: 12)
+                    .dashFrame(width: 12)
             }
             Text(label).metricLabel()
             Spacer(minLength: 6)
@@ -560,7 +668,7 @@ public struct StatTile: View {
     public var body: some View {
         VStack(alignment: .leading, spacing: 1) {
             Text(label)
-                .font(.system(size: 9))
+                .dashFont(9)
                 .foregroundStyle(.secondary)
             Text(value)
                 .metricValue(size: 11.5, weight: .semibold)

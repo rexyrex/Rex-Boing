@@ -67,6 +67,19 @@ public struct RingBuffer: Sendable {
 
     public var latest: Double { count > 0 ? storage[(head + capacity - 1) % capacity] : 0 }
 
+    /// The newest `limit` values, oldest first — what a graph showing less
+    /// than the whole buffer plots.
+    public func values(last limit: Int) -> [Double] {
+        let all = values
+        return all.count > limit ? Array(all.suffix(max(0, limit))) : all
+    }
+
+    /// When each of `values(last:)` was sampled.
+    public func timestamps(last limit: Int) -> [Date] {
+        let all = timestamps
+        return all.count > limit ? Array(all.suffix(max(0, limit))) : all
+    }
+
     /// Peak over the window, without materialising the ordered array.
     public var maximum: Double {
         guard count > 0 else { return 0 }
@@ -76,7 +89,13 @@ public struct RingBuffer: Sendable {
 
 /// Rolling history for every series the dashboard graphs.
 public struct MetricsHistory: Sendable {
-    public static let capacity = 90
+    /// How many samples are kept: ten minutes at the default one-second
+    /// cadence. The popover's graphs plot the newest `compactSpan` of them;
+    /// the Monitor window can show the rest.
+    public static let capacity = 600
+    /// The span a graph plots unless told otherwise — the minute and a half
+    /// the popover has always shown.
+    public static let compactSpan = 90
 
     public init() {}
 

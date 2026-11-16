@@ -915,6 +915,11 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         dashboard.target = self
         menu.addItem(dashboard)
 
+        let monitor = NSMenuItem(
+            title: "Monitor Window", action: #selector(openMonitor), keyEquivalent: "")
+        monitor.target = self
+        menu.addItem(monitor)
+
         let breakdown = NSMenuItem(
             title: "Process Breakdown…", action: #selector(openProcessBreakdown),
             keyEquivalent: "")
@@ -971,6 +976,10 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     }
 
     @objc private func openDashboard() { togglePopover() }
+
+    @objc private func openMonitor() {
+        MonitorWindowController.shared.show(engine: engine)
+    }
 
     /// Opens the breakdown on the newest retained sample, riding the stream
     /// from there — the same window a graph click opens, without the graph.

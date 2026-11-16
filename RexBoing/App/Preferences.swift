@@ -177,6 +177,29 @@ enum RefreshRate: Double, CaseIterable, Identifiable {
     }
 }
 
+/// How much history the Monitor window's graphs show.
+///
+/// Counted in samples, because that is what the history keeps, and labelled
+/// in time, because that is what a person chooses between — so the same
+/// three choices read "90 s · 5 min · 10 min" at the default one-second
+/// cadence and stretch with a slower one rather than promising minutes the
+/// buffer does not hold.
+enum MonitorSpan {
+    /// The popover's span, a longer look, and everything the history keeps
+    /// (`MetricsHistory.compactSpan` and `MetricsHistory.capacity`; spelled
+    /// out so the headless checks can compile this file without the model).
+    static let options = [90, 300, 600]
+
+    static func label(samples: Int, interval: TimeInterval) -> String {
+        let seconds = Double(samples) * interval
+        guard seconds >= 100 else { return "\(Int(seconds.rounded())) s" }
+        let minutes = seconds / 60
+        return abs(minutes - minutes.rounded()) < 0.05
+            ? "\(Int(minutes.rounded())) min"
+            : String(format: "%.1f min", minutes)
+    }
+}
+
 /// User-facing settings, persisted in `UserDefaults` and observable from both
 /// SwiftUI and the AppKit status item.
 @MainActor
@@ -195,6 +218,9 @@ final class Preferences: ObservableObject {
         static let showVisualizer = "showVisualizer"
         static let processRowCount = "processRowCount"
         static let launchAtLogin = "launchAtLogin"
+        static let monitorSpan = "monitorSpan"
+        static let monitorFloats = "monitorFloats"
+        static let openMonitorAtLaunch = "openMonitorAtLaunch"
     }
 
     @Published var refreshInterval: Double {
@@ -239,6 +265,23 @@ final class Preferences: ObservableObject {
             }
             defaults.set(processRowCount, forKey: Key.processRowCount)
         }
+    }
+
+    /// How many samples the Monitor window's graphs plot — one of
+    /// `MonitorSpan.options`.
+    @Published var monitorSpan: Int {
+        didSet { defaults.set(monitorSpan, forKey: Key.monitorSpan) }
+    }
+
+    /// Whether the Monitor window floats above other windows.
+    @Published var monitorFloats: Bool {
+        didSet { defaults.set(monitorFloats, forKey: Key.monitorFloats) }
+    }
+
+    /// Whether launching the app opens the Monitor window as well as putting
+    /// the rex in the menu bar.
+    @Published var openMonitorAtLaunch: Bool {
+        didSet { defaults.set(openMonitorAtLaunch, forKey: Key.openMonitorAtLaunch) }
     }
 
     /// Guards `launchAtLogin`'s revert against its own observer. Assigning a
@@ -290,6 +333,11 @@ final class Preferences: ObservableObject {
             Key.animation: AnimationQuality.smooth.rawValue,
             Key.showVisualizer: true,
             Key.processRowCount: 6,
+            // Five minutes: long enough to show what a wide graph is for,
+            // short enough that a spike is still more than a pixel.
+            Key.monitorSpan: 300,
+            Key.monitorFloats: false,
+            Key.openMonitorAtLaunch: false,
         ])
 
         // Snapped to a real case: a stray stored value (hand-edited defaults,
@@ -312,6 +360,13 @@ final class Preferences: ObservableObject {
             rawValue: defaults.string(forKey: Key.animation) ?? "") ?? .smooth
         showVisualizer = defaults.bool(forKey: Key.showVisualizer)
         processRowCount = min(12, max(3, defaults.integer(forKey: Key.processRowCount)))
+        // Snapped to a real choice, like the refresh rate above.
+        let storedSpan = defaults.integer(forKey: Key.monitorSpan)
+        monitorSpan = MonitorSpan.options.min {
+            abs($0 - storedSpan) < abs($1 - storedSpan)
+        } ?? 300
+        monitorFloats = defaults.bool(forKey: Key.monitorFloats)
+        openMonitorAtLaunch = defaults.bool(forKey: Key.openMonitorAtLaunch)
         launchAtLogin = LoginItem.isEnabled
         launchAtLoginRequiresApproval = LoginItem.requiresApproval
     }

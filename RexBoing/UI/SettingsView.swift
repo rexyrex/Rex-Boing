@@ -3,6 +3,9 @@ import AppKit
 
 struct SettingsView: View {
     @EnvironmentObject private var preferences: Preferences
+    /// Only handed on to the Monitor window. A plain reference, so that
+    /// nothing in these forms is re-evaluated by a sample.
+    let engine: MetricsEngine
 
     var body: some View {
         TabView {
@@ -48,6 +51,21 @@ struct SettingsView: View {
                 Stepper(
                     "Processes per list: \(preferences.processRowCount)",
                     value: $preferences.processRowCount, in: 3...12)
+            }
+
+            Section("Monitor window") {
+                Toggle("Open when Rex Boing starts", isOn: $preferences.openMonitorAtLaunch)
+                Toggle("Keep on top of other windows", isOn: $preferences.monitorFloats)
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    Text("Every reading at once, in a window that stays open. Also under the rex's right-click menu, and what opening Rex Boing again shows.")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                    Spacer(minLength: 4)
+                    Button("Open Monitor") {
+                        MonitorWindowController.shared.show(engine: engine)
+                    }
+                    .controlSize(.small)
+                }
             }
 
             Section {
@@ -417,7 +435,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
 
     private func makeContent(engine: MetricsEngine) -> NSViewController {
         NSHostingController(
-            rootView: SettingsView()
+            rootView: SettingsView(engine: engine)
                 .environmentObject(Preferences.shared)
                 .environmentObject(engine))
     }

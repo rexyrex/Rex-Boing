@@ -206,12 +206,12 @@ private struct ProcessRowView: View {
     public var body: some View {
         HStack(spacing: 7) {
             ProcessIcon(row: row)
-                .frame(width: 15, height: 15)
+                .dashFrame(width: 15, height: 15)
 
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 5) {
                     Text(row.displayName)
-                        .font(.system(size: 11))
+                        .dashFont(11)
                         .lineLimit(1)
                         .truncationMode(.middle)
                     Spacer(minLength: 4)

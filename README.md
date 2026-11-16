@@ -41,8 +41,9 @@ through. Requires macOS 14 Sonoma or later; Apple silicon gets every reading,
 and on Intel the rows whose counters do not exist there are hidden rather than
 faked.
 
-Click the rex for the dashboard, right-click it for the rex gallery and
-settings, and turn on **Launch at login** in Settings to keep it. To build it
+Click the rex for the dashboard, right-click it for the Monitor window, the
+rex gallery and settings, and turn on **Launch at login** in Settings to keep
+it. To build it
 yourself instead, see [Building](#building).
 
 ## What you get
@@ -56,6 +57,9 @@ yourself instead, see [Building](#building).
   into their app.
 - **What was that spike?** Click any graph to see every process at that
   instant, with all five measures and wakeups side by side.
+- **A window when you want one.** The Monitor window keeps every reading open
+  at once — a strip of headline tiles over all the cards, their detail
+  unfolded, with up to ten minutes of history in the graphs.
 - **Real watts.** Whole-machine power from the SMC, CPU, GPU and Neural Engine
   power, battery health, and every app holding off sleep.
 - **Every sensor.** Per-core load and clocks, all 186 temperature sensors on an
@@ -70,6 +74,8 @@ yourself instead, see [Building](#building).
     <td width="50%"><img src="docs/dashboard-lower.png" alt="The dashboard scrolled down: the end of the top processes list, power with what is keeping the Mac awake, network and storage."></td>
   </tr>
 </table>
+
+<p align="center"><img src="docs/monitor.png" width="900" alt="The Monitor window: a strip of headline tiles for processor, graphics, memory, thermals, power, network and storage, above three columns of cards with their detail open."></p>
 
 ## How it compares
 
@@ -182,6 +188,36 @@ usually the quickest way to find out what is keeping the GPU awake. The disk
 ranking counts traffic that actually reached the device, so reads served from
 the page cache do not inflate it, and it is the fastest answer to "what is
 hammering the SSD".
+
+**Monitor window** (right-click the item, the window button in the
+dashboard's header, or open Rex Boing again while it is running)
+
+The dashboard is a popover: it is there for a glance and gone at the next
+click. The Monitor window is the same readings for when you want them to
+stay — on a second display, or beside the build they are watching. It is an
+ordinary window: resizable, full-screen capable, in the Dock and ⌘-Tab while
+it is open, and optionally kept on top of everything else.
+
+- **A strip of headline tiles** leads it — processor, graphics, memory,
+  thermals, power, network, storage, and battery where there is one — each
+  a number readable from across the room over the trace it has just drawn.
+  Tiles only exist for what the Mac actually reports, and clicking one opens
+  the process breakdown for that resource.
+- **Every card with its detail open**, in one, two or three columns as the
+  width allows: per-core bars, cluster clocks, the memory breakdown and swap
+  are all on screen without a disclosure to click. Graphs are taller and
+  ruled at the quarters, and network and storage draw their two directions
+  apart, each against its own scale.
+- **Up to ten minutes of history.** The graphs show the last minute and a
+  half, five minutes or ten (at the default one-second refresh; the spans
+  stretch with a slower one). The history is kept whether or not the window
+  is open, so it opens already full.
+- **A status line** with the sampling cadence, process and thread counts, and
+  the operating system's own two verdicts: thermal state and memory pressure.
+
+It costs what the open dashboard costs, and only while it can be seen:
+minimised, fully covered or on another Space it stops redrawing and hands the
+detailed sampling back. Settings → General can open it at launch.
 
 **Process breakdown** (click any graph)
 
@@ -339,8 +375,11 @@ sample — a `proc_pidinfo` and a `proc_pid_rusage` for each of roughly a
 thousand processes, plus a recursive IORegistry walk for GPU attribution —
 measures 11.9 ms; deduplicating the rankings into the union that gets kept
 and appending it to the ring adds 0.05 ms, or 0.44% of the sample it rides on.
-The union runs 32–36 rows, so ninety of them cost about 330 KB of numbers, with
-name and path strings shared across samples rather than rebuilt per sample.
+The union runs 32–36 rows, so the six hundred the ring holds — ten minutes of
+them while a dashboard is open, about an hour otherwise — cost about 2.2 MB of
+numbers, with name and path strings shared across samples rather than rebuilt
+per sample. The graph series beside them are fifteen rings of six hundred
+samples, 144 KB in all.
 
 The dashboard figure is the outlier and is worth stating plainly: a panel with
 eight live cards, seven graphs, a per-core grid and a ranked process list costs
@@ -542,6 +581,16 @@ swiftc -O -o /tmp/render-dashboard Tools/render-dashboard.swift \
 /tmp/render-dashboard docs 60
 ```
 
+`Tools/render-monitor.swift` does the same for the Monitor window's content,
+at any size — the width decides whether it lays out in one, two or three
+columns:
+
+```bash
+swiftc -O -o /tmp/render-monitor Tools/render-monitor.swift \
+  $(find RexBoing -name '*.swift' ! -name RexBoingApp.swift)
+/tmp/render-monitor docs/monitor.png 95 1280 860
+```
+
 ### Releasing
 
 `package.sh` builds Release, signs it with a Developer ID certificate and the
@@ -577,9 +626,9 @@ what keeps that easy to check.
 
 ### RexBoingKit
 
-The snapshot model, the samplers, the dashboard cards and the menu bar
-characters are also a Swift package, `RexBoingKit`, described by
-`Package.swift` at the root of this repository. Rex Boing itself does not
+The snapshot model, the samplers, the dashboard cards, the Monitor window's
+headline tiles and the menu bar characters are also a Swift package,
+`RexBoingKit`, described by `Package.swift` at the root of this repository. Rex Boing itself does not
 build through it — the Xcode project compiles the same files straight into the
 app — but [Rex Boing Remote](https://github.com/rexyrex/Rex-Boing-Remote)
 depends on it by release tag, so the remote dashboards are drawn by this code
@@ -594,7 +643,8 @@ RexBoing/
   Metrics/        Snapshot model, history buffers, usage ledger, formatting
     Samplers/     one file per data source
   StatusBar/      visualisers, layer canvas, readout renderer, status item
-  UI/             dashboard, cards, components, process inspector, settings
+  UI/             dashboard, Monitor window, cards, components, process
+                  inspector, settings
   Assets.xcassets generated app icon
 Tools/            headless checks (run them all with Tools/check.sh), the app
                   icon generator and the README figure renderers

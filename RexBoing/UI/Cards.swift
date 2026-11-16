@@ -14,6 +14,7 @@ public struct CPUCard: View {
     public var unit: TemperatureUnit
 
     @State private var expanded = false
+    @Environment(\.dashboardStyle) private var style
 
     private var cpu: CPUMetrics { snapshot.cpu }
 
@@ -26,7 +27,7 @@ public struct CPUCard: View {
                 values: history.cpu.values, accent: Palette.cpu,
                 timestamps: history.cpu.timestamps,
                 inspectorMetric: .cpu)
-                .frame(height: 42)
+                .frame(height: style.graph(42))
 
             // Temperature and power are the two numbers the graph cannot show.
             // Everything else here describes the same load the trace already
@@ -47,11 +48,16 @@ public struct CPUCard: View {
 
             Divider().opacity(0.4)
 
-            ExpandButton(
-                title: expanded ? "Less" : "More detail", spokenTitle: "detail",
-                expanded: $expanded)
+            // A window has the room, so nothing waits behind a click there.
+            if style.isWindow {
+                detail
+            } else {
+                ExpandButton(
+                    title: expanded ? "Less" : "More detail", spokenTitle: "detail",
+                    expanded: $expanded)
 
-            if expanded { detail }
+                if expanded { detail }
+            }
         }
     }
 
@@ -118,11 +124,11 @@ public struct CPUCard: View {
         if buffer.count > 0 {
             Sparkline(
                 values: buffer.values, accent: accent, ceiling: nil,
-                scaleCaption: "\(label) peak \(Format.frequency(buffer.maximum))",
+                peakCaption: { "\(label) peak \(Format.frequency($0))" },
                 timestamps: buffer.timestamps,
                 format: { Format.frequency($0) },
                 inspectorMetric: .cpu)
-                .frame(height: 24)
+                .frame(height: style.graph(24))
         }
     }
 }
@@ -141,6 +147,7 @@ public struct GPUCard: View {
     public var unit: TemperatureUnit
 
     @State private var expanded = false
+    @Environment(\.dashboardStyle) private var style
 
     private var gpu: GPUMetrics { snapshot.gpu }
 
@@ -155,7 +162,7 @@ public struct GPUCard: View {
                     values: history.gpu.values, accent: Palette.gpu,
                     timestamps: history.gpu.timestamps,
                     inspectorMetric: .gpu)
-                    .frame(height: 42)
+                    .frame(height: style.graph(42))
 
                 HStack(spacing: 0) {
                     StatTile(
@@ -173,11 +180,15 @@ public struct GPUCard: View {
 
                 Divider().opacity(0.4)
 
-                ExpandButton(
-                    title: expanded ? "Less" : "More detail", spokenTitle: "detail",
-                    expanded: $expanded)
+                if style.isWindow {
+                    detail
+                } else {
+                    ExpandButton(
+                        title: expanded ? "Less" : "More detail", spokenTitle: "detail",
+                        expanded: $expanded)
 
-                if expanded { detail }
+                    if expanded { detail }
+                }
             } else {
                 Text("No accelerator reported utilisation statistics.")
                     .metricLabel()
@@ -226,6 +237,7 @@ public struct MemoryCard: View {
     public var history: MetricsHistory
 
     @State private var expanded = false
+    @Environment(\.dashboardStyle) private var style
 
     private var memory: MemoryMetrics { snapshot.memory }
 
@@ -247,7 +259,7 @@ public struct MemoryCard: View {
                         : Format.percent(fraction, decimals: 1)
                 },
                 inspectorMetric: .memory)
-                .frame(height: 42)
+                .frame(height: style.graph(42))
 
             // Pressure and swap are what the trace cannot show. A Mac can sit
             // at ninety percent used and be perfectly happy; the same ninety
@@ -266,11 +278,15 @@ public struct MemoryCard: View {
 
             Divider().opacity(0.4)
 
-            ExpandButton(
-                title: expanded ? "Less" : "More detail", spokenTitle: "detail",
-                expanded: $expanded)
+            if style.isWindow {
+                detail
+            } else {
+                ExpandButton(
+                    title: expanded ? "Less" : "More detail", spokenTitle: "detail",
+                    expanded: $expanded)
 
-            if expanded { detail }
+                if expanded { detail }
+            }
         }
     }
 
@@ -304,7 +320,7 @@ public struct MemoryCard: View {
                 Text("Unreclaimable").sectionCaption()
                 Spacer(minLength: 4)
                 Text(Format.percent(memory.pressure))
-                    .font(.system(size: 10, weight: .medium))
+                    .dashFont(10, weight: .medium)
                     .monospacedDigit()
                     .foregroundStyle(Severity.memory(memory.pressureLevel).swiftUIColor)
             }
@@ -322,12 +338,12 @@ public struct MemoryCard: View {
             // the one most menu bar monitors leave out.
             HStack(spacing: 6) {
                 Image(systemName: "arrow.left.arrow.right.square")
-                    .font(.system(size: 10, weight: .semibold))
+                    .dashFont(10, weight: .semibold)
                     .foregroundStyle(Palette.swap)
                 Text("Swap").sectionCaption()
                 Spacer(minLength: 4)
                 Text(swapSummary)
-                    .font(.system(size: 10, weight: .medium))
+                    .dashFont(10, weight: .medium)
                     .monospacedDigit()
                     .foregroundStyle(
                         memory.swap.used > 0
@@ -368,6 +384,7 @@ public struct ThermalCard: View {
 
     @State private var expanded = false
     @Environment(\.machineNoun) private var machineNoun
+    @Environment(\.dashboardStyle) private var style
 
     private var thermal: ThermalMetrics { snapshot.thermal }
 
@@ -394,7 +411,7 @@ public struct ThermalCard: View {
                     timestamps: history.cpuTemp.timestamps,
                     format: { Format.temperature($0, unit: unit) },
                     inspectorMetric: .cpu)
-                    .frame(height: 26)
+                    .frame(height: style.graph(26))
 
                 if !thermal.fans.isEmpty {
                     Divider().opacity(0.4)
@@ -402,11 +419,11 @@ public struct ThermalCard: View {
                         HStack(spacing: 8) {
                             Text("Fan \(fan.index + 1)")
                                 .metricLabel()
-                                .frame(width: 42, alignment: .leading)
+                                .dashFrame(width: 42, alignment: .leading)
                             MiniBar(fraction: fan.fraction, accent: Palette.thermal)
                             Text("\(Int(fan.rpm)) rpm")
                                 .metricValue(size: 10.5)
-                                .frame(width: 62, alignment: .trailing)
+                                .dashFrame(width: 62, alignment: .trailing)
                         }
                     }
                 }
@@ -429,27 +446,28 @@ public struct ThermalCard: View {
             ForEach(thermal.groups) { group in
                 VStack(alignment: .leading, spacing: 2) {
                     Text(group.category.rawValue)
-                        .font(.system(size: 9, weight: .semibold))
+                        .dashFont(9, weight: .semibold)
                         .foregroundStyle(.tertiary)
 
                     // Sensor counts run into the dozens, so they are laid
-                    // out in a compact grid rather than one row each.
+                    // out in a compact grid rather than one row each — a
+                    // column wider where a window gives the card the width.
                     LazyVGrid(
                         columns: Array(
                             repeating: GridItem(.flexible(), spacing: 6, alignment: .leading),
-                            count: 3),
+                            count: style.isWindow ? 4 : 3),
                         alignment: .leading, spacing: 2
                     ) {
                         ForEach(group.sensors) { sensor in
                             HStack(spacing: 3) {
                                 Text(sensor.key)
-                                    .font(.system(size: 9, design: .monospaced))
+                                    .dashFont(9, design: .monospaced)
                                     .foregroundStyle(.secondary)
                                 Spacer(minLength: 2)
                                 Text(String(
                                     format: "%.0f°",
                                     Format.temperatureValue(sensor.celsius, unit: unit)))
-                                    .font(.system(size: 9, weight: .medium))
+                                    .dashFont(9, weight: .medium)
                                     .monospacedDigit()
                                     .foregroundStyle(
                                         Severity.temperature(sensor.celsius).swiftUIColor)
@@ -484,6 +502,7 @@ public struct PowerCard: View {
     public var unit: TemperatureUnit
 
     @Environment(\.machineNoun) private var machineNoun
+    @Environment(\.dashboardStyle) private var style
 
     private var power: PowerMetrics { snapshot.power }
     private var battery: BatteryMetrics { snapshot.battery }
@@ -535,11 +554,11 @@ public struct PowerCard: View {
                 if history.power.count > 0 {
                     Sparkline(
                         values: history.power.values, accent: Palette.power, ceiling: nil,
-                        scaleCaption: Format.watts(history.power.maximum) + " peak",
+                        peakCaption: { Format.watts($0) + " peak" },
                         timestamps: history.power.timestamps,
                         format: { Format.watts($0) },
                         inspectorMetric: .energy)
-                        .frame(height: 24)
+                        .frame(height: style.graph(24))
                 }
             }
 
@@ -556,11 +575,11 @@ public struct PowerCard: View {
 
                 HStack(spacing: 6) {
                     Image(systemName: batterySymbol)
-                        .font(.system(size: 11))
+                        .dashFont(11)
                         .foregroundStyle(
                             battery.isCharging ? Palette.battery : .secondary)
                     Text(batteryHeadline)
-                        .font(.system(size: 11, weight: .medium))
+                        .dashFont(11, weight: .medium)
                         .monospacedDigit()
                     Spacer()
                     if let remaining = battery.timeRemainingMinutes {
@@ -612,13 +631,13 @@ public struct PowerCard: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 6) {
                 Image(systemName: "moon.zzz")
-                    .font(.system(size: 10, weight: .semibold))
+                    .dashFont(10, weight: .semibold)
                     .foregroundStyle(.secondary)
                 Text("Keeping awake").sectionCaption()
                 Spacer(minLength: 4)
                 if snapshot.sleep.blockers.isEmpty {
                     Text("nothing")
-                        .font(.system(size: 10, weight: .medium))
+                        .dashFont(10, weight: .medium)
                         .foregroundStyle(.secondary)
                 }
             }
@@ -631,12 +650,12 @@ public struct PowerCard: View {
             ForEach(displayedBlockers) { blocker in
                 HStack(spacing: 6) {
                     Text(blocker.name)
-                        .font(.system(size: 11))
+                        .dashFont(11)
                         .lineLimit(1)
                         .truncationMode(.middle)
                     Spacer(minLength: 6)
                     Text(blocker.preventsDisplaySleep ? "display" : "system")
-                        .font(.system(size: 9, weight: .medium))
+                        .dashFont(9, weight: .medium)
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 5)
                         .padding(.vertical, 1)
@@ -653,7 +672,7 @@ public struct PowerCard: View {
 
             if overflowingBlockerCount > 0 {
                 Text("+ \(overflowingBlockerCount) more")
-                    .font(.system(size: 9.5))
+                    .dashFont(9.5)
                     .foregroundStyle(.tertiary)
             }
         }
@@ -712,6 +731,8 @@ public struct NetworkCard: View {
     public var snapshot: Snapshot
     public var history: MetricsHistory
 
+    @Environment(\.dashboardStyle) private var style
+
     public var body: some View {
         Card(
             accent: Palette.network, title: "Network", symbol: "network",
@@ -725,15 +746,38 @@ public struct NetworkCard: View {
             // `MetricsHistory.record`, so the zip is element-aligned by
             // construction. The caption says "peak" because an autoscaled
             // maximum otherwise reads as a rate.
-            let combined = zip(
-                history.networkRx.values, history.networkTx.values).map(+)
-            Sparkline(
-                values: combined, accent: Palette.network, ceiling: nil,
-                scaleCaption: Format.rate(combined.max() ?? 0) + " peak",
-                timestamps: history.networkRx.timestamps,
-                format: { Format.rate($0) },
-                inspectorMetric: .cpu)
-                .frame(height: 30)
+            //
+            // A window is wide enough to draw the two apart, each against
+            // its own scale — an upload a hundredth the size of a download
+            // is otherwise a line along the floor of the sum.
+            if style.isWindow {
+                HStack(spacing: 10) {
+                    Sparkline(
+                        values: history.networkRx.values, accent: Palette.network, ceiling: nil,
+                        peakCaption: { "↓ " + Format.rate($0) + " peak" },
+                        timestamps: history.networkRx.timestamps,
+                        format: { Format.rate($0) },
+                        inspectorMetric: .cpu)
+                    Sparkline(
+                        values: history.networkTx.values,
+                        accent: Palette.network.opacity(0.62), ceiling: nil,
+                        peakCaption: { "↑ " + Format.rate($0) + " peak" },
+                        timestamps: history.networkTx.timestamps,
+                        format: { Format.rate($0) },
+                        inspectorMetric: .cpu)
+                }
+                .frame(height: style.graph(30))
+            } else {
+                let combined = zip(
+                    history.networkRx.values, history.networkTx.values).map(+)
+                Sparkline(
+                    values: combined, accent: Palette.network, ceiling: nil,
+                    peakCaption: { Format.rate($0) + " peak" },
+                    timestamps: history.networkRx.timestamps,
+                    format: { Format.rate($0) },
+                    inspectorMetric: .cpu)
+                    .frame(height: 30)
+            }
 
             VStack(alignment: .leading, spacing: 4) {
                 StatRow(
@@ -753,12 +797,12 @@ public struct NetworkCard: View {
             VStack(alignment: .leading, spacing: 2) {
                 if let address = snapshot.network.localAddress {
                     Text(address)
-                        .font(.system(size: 9.5, design: .monospaced))
+                        .dashFont(9.5, design: .monospaced)
                         .foregroundStyle(.tertiary)
                 }
                 Text(sessionTotals(
                     down: snapshot.network.rxTotal, up: snapshot.network.txTotal))
-                    .font(.system(size: 9.5))
+                    .dashFont(9.5)
                     .monospacedDigit()
                     .foregroundStyle(.tertiary)
             }
@@ -777,6 +821,8 @@ public struct StorageCard: View {
     public var snapshot: Snapshot
     public var history: MetricsHistory
 
+    @Environment(\.dashboardStyle) private var style
+
     public var body: some View {
         Card(
             accent: Palette.disk, title: "Storage", symbol: "internaldrive",
@@ -785,15 +831,35 @@ public struct StorageCard: View {
         ) {
             // Same shape as the network trace: reads plus writes, or a heavy
             // read leaves the graph flat under a row saying otherwise.
-            let combined = zip(
-                history.diskRead.values, history.diskWrite.values).map(+)
-            Sparkline(
-                values: combined, accent: Palette.disk, ceiling: nil,
-                scaleCaption: Format.rate(combined.max() ?? 0) + " peak",
-                timestamps: history.diskWrite.timestamps,
-                format: { Format.rate($0) },
-                inspectorMetric: .disk)
-                .frame(height: 30)
+            // Apart in a window, for the reason the network's are.
+            if style.isWindow {
+                HStack(spacing: 10) {
+                    Sparkline(
+                        values: history.diskRead.values, accent: Palette.disk, ceiling: nil,
+                        peakCaption: { "Read " + Format.rate($0) + " peak" },
+                        timestamps: history.diskRead.timestamps,
+                        format: { Format.rate($0) },
+                        inspectorMetric: .disk)
+                    Sparkline(
+                        values: history.diskWrite.values,
+                        accent: Palette.disk.opacity(0.62), ceiling: nil,
+                        peakCaption: { "Write " + Format.rate($0) + " peak" },
+                        timestamps: history.diskWrite.timestamps,
+                        format: { Format.rate($0) },
+                        inspectorMetric: .disk)
+                }
+                .frame(height: style.graph(30))
+            } else {
+                let combined = zip(
+                    history.diskRead.values, history.diskWrite.values).map(+)
+                Sparkline(
+                    values: combined, accent: Palette.disk, ceiling: nil,
+                    peakCaption: { Format.rate($0) + " peak" },
+                    timestamps: history.diskWrite.timestamps,
+                    format: { Format.rate($0) },
+                    inspectorMetric: .disk)
+                    .frame(height: 30)
+            }
 
             VStack(alignment: .leading, spacing: 4) {
                 StatRow(
@@ -809,7 +875,7 @@ public struct StorageCard: View {
             Text(sessionTotals(
                 down: snapshot.disk.readTotal, up: snapshot.disk.writeTotal,
                 downLabel: "read", upLabel: "written"))
-                .font(.system(size: 9.5))
+                .dashFont(9.5)
                 .monospacedDigit()
                 .foregroundStyle(.tertiary)
 

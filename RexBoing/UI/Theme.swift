@@ -262,12 +262,102 @@ public enum Metrics {
     }
 }
 
+// MARK: - Surface
+
+/// Where the cards are being shown, and so how much room they may take.
+///
+/// The popover is a glance: summaries, with the detail folded behind a
+/// disclosure, at the small sizes a 560-point panel needs. A window is
+/// somewhere to stay — the Monitor window in Rex Boing, a server's window in
+/// Rex Boing Remote — so there the cards open their detail, draw taller
+/// graphs and set their type a step larger. One environment value rather
+/// than a parameter on every card, for the reason `inspectGraph` is one.
+public enum DashboardStyle: Sendable, Equatable {
+    case popover
+    case window
+
+    public var isWindow: Bool { self == .window }
+
+    /// Type and the fixed widths measured for it, snapped to half points so
+    /// text still lands on the pixel grid at 2×.
+    public func scaled(_ points: CGFloat) -> CGFloat {
+        guard isWindow else { return points }
+        return (points * 1.12 * 2).rounded() / 2
+    }
+
+    /// A graph's height. A window has the room to show a trace's shape, not
+    /// only its direction.
+    public func graph(_ height: CGFloat) -> CGFloat {
+        isWindow ? (height * 1.75).rounded() : height
+    }
+
+    public var cardPadding: CGFloat { isWindow ? 14 : Metrics.cardPadding }
+    public var cardCorner: CGFloat { isWindow ? 13 : Metrics.cardCorner }
+    public var sectionSpacing: CGFloat { isWindow ? 12 : Metrics.sectionSpacing }
+}
+
+private struct DashboardStyleKey: EnvironmentKey {
+    public static let defaultValue = DashboardStyle.popover
+}
+
+extension EnvironmentValues {
+    public var dashboardStyle: DashboardStyle {
+        get { self[DashboardStyleKey.self] }
+        set { self[DashboardStyleKey.self] = newValue }
+    }
+}
+
+/// System type at a size that follows `DashboardStyle`.
+private struct DashFont: ViewModifier {
+    @Environment(\.dashboardStyle) private var style
+
+    var size: CGFloat
+    var weight: Font.Weight
+    var design: Font.Design
+
+    func body(content: Content) -> some View {
+        content.font(.system(size: style.scaled(size), weight: weight, design: design))
+    }
+}
+
+/// A fixed size that follows `DashboardStyle`, for the icons and columns
+/// measured against the type beside them.
+private struct DashFrame: ViewModifier {
+    @Environment(\.dashboardStyle) private var style
+
+    var width: CGFloat?
+    var height: CGFloat?
+    var alignment: Alignment
+
+    func body(content: Content) -> some View {
+        content.frame(
+            width: width.map(style.scaled), height: height.map(style.scaled),
+            alignment: alignment)
+    }
+}
+
+extension View {
+    /// `.font(.system(size:weight:design:))`, a step larger in a window.
+    public func dashFont(
+        _ size: CGFloat, weight: Font.Weight = .regular, design: Font.Design = .default
+    ) -> some View {
+        modifier(DashFont(size: size, weight: weight, design: design))
+    }
+
+    /// `.frame(width:height:alignment:)`, a step larger in a window.
+    public func dashFrame(
+        width: CGFloat? = nil, height: CGFloat? = nil, alignment: Alignment = .center
+    ) -> some View {
+        modifier(DashFrame(width: width, height: height, alignment: alignment))
+    }
+}
+
 // MARK: - Shared text styles
 
 extension View {
     /// Small uppercase section label.
     public func sectionCaption() -> some View {
-        font(.system(size: 9.5, weight: .semibold))
+        dashFont(9.5, weight: .semibold)
             .kerning(0.6)
             .textCase(.uppercase)
             .foregroundStyle(.secondary)
@@ -275,12 +365,12 @@ extension View {
 
     /// Numeric readout. Monospaced digits stop values jittering as they change.
     public func metricValue(size: CGFloat = 12, weight: Font.Weight = .medium) -> some View {
-        font(.system(size: size, weight: weight, design: .rounded))
+        dashFont(size, weight: weight, design: .rounded)
             .monospacedDigit()
     }
 
     public func metricLabel() -> some View {
-        font(.system(size: 10.5))
+        dashFont(10.5)
             .foregroundStyle(.secondary)
     }
 }
@@ -314,25 +404,45 @@ public struct Card<Content: View>: View {
     public var headline: String?
     @ViewBuilder public var content: Content
 
+    @Environment(\.dashboardStyle) private var style
+
     public var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 5) {
+        VStack(alignment: .leading, spacing: style.isWindow ? 10 : 8) {
+            HStack(spacing: 6) {
+                // The symbol on a chip of its own hue, the same tint the
+                // headline sits on at the other end of the row: the two
+                // bracket the title, and a column of cards reads as a column
+                // of coloured tabs rather than of small grey words.
                 Image(systemName: symbol)
-                    .font(.system(size: 10, weight: .semibold))
+                    .dashFont(9.5, weight: .semibold)
                     .foregroundStyle(accent)
+                    .dashFrame(width: 18, height: 18)
+                    .background(
+                        RoundedRectangle(cornerRadius: 5, style: .continuous)
+                            .fill(accent.opacity(0.16)))
+                    .accessibilityHidden(true)
                 Text(title).sectionCaption()
+                    .lineLimit(1)
+                    .fixedSize()
                 Spacer(minLength: 4)
                 if let trailing {
+                    // One line, shrinking before it wraps: "11.36 GB of
+                    // 62.12 GB" beside a headline is the widest this row
+                    // gets, and two lines of it pushed the whole card down.
                     Text(trailing)
-                        .font(.system(size: 10, weight: .medium))
+                        .dashFont(10, weight: .medium)
                         .monospacedDigit()
                         .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
                 }
                 if let headline {
                     Text(headline)
-                        .font(.system(size: 15, weight: .bold, design: .rounded))
+                        .dashFont(15, weight: .bold, design: .rounded)
                         .monospacedDigit()
                         .foregroundStyle(accent)
+                        .lineLimit(1)
+                        .fixedSize()
                         .padding(.horizontal, 6)
                         .padding(.vertical, 1)
                         .background(
@@ -346,12 +456,12 @@ public struct Card<Content: View>: View {
         // a paired row it is what lets the shorter card's background run the
         // full height of its neighbour instead of stopping partway down.
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .padding(Metrics.cardPadding)
+        .padding(style.cardPadding)
         .background(
-            RoundedRectangle(cornerRadius: Metrics.cardCorner, style: .continuous)
+            RoundedRectangle(cornerRadius: style.cardCorner, style: .continuous)
                 .fill(Palette.cardBackground))
         .overlay(
-            RoundedRectangle(cornerRadius: Metrics.cardCorner, style: .continuous)
+            RoundedRectangle(cornerRadius: style.cardCorner, style: .continuous)
                 .strokeBorder(Palette.cardStroke, lineWidth: 1))
     }
 }
