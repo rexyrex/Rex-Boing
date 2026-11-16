@@ -28,6 +28,7 @@ struct RexBoingApp: App {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var engine: MetricsEngine?
     private var statusItem: StatusItemController?
+    private var statsBroadcaster: StatsBroadcaster?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Launch Services only dedupes launches of the same bundle *path*, and
@@ -58,6 +59,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let engine = MetricsEngine()
         self.engine = engine
         self.statusItem = StatusItemController(engine: engine)
+        self.statsBroadcaster = StatsBroadcaster(engine: engine)
     }
 
     /// Launch order, oldest first; the pid breaks a tie (or a missing date),

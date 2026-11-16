@@ -247,7 +247,7 @@ Everything runs unprivileged. No helper tool, no `sudo`, no `powermetrics`.
 | GPU utilisation, VRAM | `IOAccelerator` → `PerformanceStatistics` in the IORegistry |
 | Temperatures, fans | AppleSMC user client (`Tp**` CPU, `Tg**` GPU, `Te**` E-cluster, `Tm**` memory) |
 | Per-component power, CPU/GPU clocks | `IOReport` energy counters and DVFS state residency |
-| Whole-machine power | AppleSMC system rails — `PSTR` total, `PDTR` DC-in |
+| Whole-machine power | AppleSMC system rails — `PSTR` total (the `PD0R` input rail on a desktop that leaves `PSTR` at 0), `PDTR` DC-in |
 | Per-process CPU / memory / energy / disk I/O / wakeups | `libproc` — `proc_pidinfo`, `proc_pid_rusage` |
 | Per-process GPU | `IOUserClientCreator` + `AppUsage.accumulatedGPUTime` per accelerator client |
 | Battery | `IOPowerSources` and `AppleSmartBattery` |
@@ -465,6 +465,16 @@ The app is ad-hoc signed and **not sandboxed** — the sandbox blocks the Mach
 host ports, whole-system `libproc` access and IORegistry reads the whole app is
 built on. It makes no network connections and writes nothing outside its own
 preferences domain.
+
+Another app on the same Mac can ask for the headline readings: while it keeps
+posting the `com.rexyrex.Zoomies.stats.request` distributed notification, Rex
+Boing answers each sample (at most every two seconds, for thirty seconds after
+the latest request) with `com.rexyrex.Zoomies.stats`, whose
+`userInfo["payload"]` is a small JSON object — CPU, GPU and memory load,
+temperatures, fan speed, power, network and disk throughput, and nothing about
+processes. Distributed notifications stay inside the login session, so this is
+neither network nor disk, and nothing is sent while nobody asks. Mac Studio
+Project Manager's Agent Deck uses it to put these on a Stream Deck.
 
 ### Checks
 
