@@ -10,6 +10,11 @@ import Foundation
 /// `PDTR` (draw at the DC-in port, charging and conversion loss included).
 /// Both are instantaneous gauges rather than interval counters, so a read
 /// stands on its own — no baseline, no delta, valid straight after a wake.
+///
+/// Some desktops carry `PSTR` and leave it at a flat 0 W (a Mac Studio,
+/// Mac17,15, does). Everything such a Mac draws comes in through its one
+/// input rail, which the SMC publishes as `PD0R`, so that stands in for the
+/// total there.
 final class SystemPowerSampler {
     struct Reading {
         var systemTotalWatts: Double?
@@ -18,19 +23,34 @@ final class SystemPowerSampler {
 
     private let smc: SMCService
 
-    /// Fails where the system rail is absent — Intel SMCs mostly do not carry
+    /// A machine that is on draws real watts: a system rail at 0 W is a key
+    /// the firmware never fills in, not a measurement.
+    static let floorWatts = 0.1
+
+    /// Fails where no system rail is present — Intel SMCs mostly do not carry
     /// `PSTR` — so the engine can skip the sampler entirely, the same contract
     /// `IOReportSampler` has.
     init?() {
-        guard let smc = SMCService(), smc.watts(key: "PSTR") != nil else { return nil }
+        guard let smc = SMCService(),
+              smc.watts(key: "PSTR") != nil || smc.watts(key: "PD0R") != nil else { return nil }
         self.smc = smc
     }
 
     func sample() -> Reading {
         Reading(
-            systemTotalWatts: smc.watts(key: "PSTR"),
+            systemTotalWatts: Self.total(system: smc.watts(key: "PSTR")) { smc.watts(key: "PD0R") },
             // The port rail reads a flat 0 W on battery, which is "unplugged",
             // not a wattage worth a tile.
             dcInWatts: smc.watts(key: "PDTR").flatMap { $0 > 0.01 ? $0 : nil })
+    }
+
+    /// The whole-machine figure: the system rail where it reads, else the
+    /// input rail (read only then), else nothing — and `PowerMetrics` falls
+    /// back to the battery's or the SoC package's figure rather than
+    /// headlining 0 W.
+    static func total(system: Double?, inputRail: () -> Double?) -> Double? {
+        if let system, system > floorWatts { return system }
+        if let input = inputRail(), input > floorWatts { return input }
+        return nil
     }
 }

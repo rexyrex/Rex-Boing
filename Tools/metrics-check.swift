@@ -120,6 +120,14 @@ enum MetricsCheck {
         check(systemPower == nil || systemPowerReading.systemTotalWatts
                 .map { $0.isFinite && $0 > 0.1 && $0 < 500 } == true,
               "system rail is absent or reads plausible whole-machine watts")
+        // Pure: which rail headlines. A system rail the firmware leaves at
+        // 0 W (some desktops) gives way to the input rail, never to "0 W".
+        check(SystemPowerSampler.total(system: 35) { 99 } == 35
+                && SystemPowerSampler.total(system: 0) { 21 } == 21
+                && SystemPowerSampler.total(system: nil) { 21 } == 21
+                && SystemPowerSampler.total(system: 0) { 0 } == nil
+                && SystemPowerSampler.total(system: nil) { nil } == nil,
+              "a dead system rail gives way to the input rail, and never reads 0 W")
         check(systemPowerReading.dcInWatts.map { $0.isFinite && $0 > 0 } != false,
               "DC-in rail is absent or positive")
         check([
