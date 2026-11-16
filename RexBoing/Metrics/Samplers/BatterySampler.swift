@@ -74,6 +74,15 @@ final class BatterySampler {
                 .takeRetainedValue() as? NSNumber)?.intValue
         }
 
+        // The node is not the cell. A desktop can carry one with nothing
+        // behind it — a Mac Studio (Mac17,15) does, and says so — and taking
+        // the node for a battery gave that Mac a battery at 0 %, flat and
+        // unplugged, in the power card. Absent the flag, the node is believed.
+        let installed = IORegistryEntryCreateCFProperty(
+            service, "BatteryInstalled" as CFString, kCFAllocatorDefault, 0)?
+            .takeRetainedValue() as? Bool
+        guard installed != false else { return }
+
         metrics.present = true
         metrics.cycleCount = integer("CycleCount")
         metrics.designCapacity = integer("DesignCapacity")
