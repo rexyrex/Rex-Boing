@@ -23,3 +23,6 @@ reference/
 # Local tooling state
 .claude/
 .DS_Store
+
+# Promo video renders (large, regenerated)
+/videos/
