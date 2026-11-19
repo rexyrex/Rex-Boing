@@ -64,6 +64,9 @@ yourself instead, see [Building](#building).
   power, battery health, and every app holding off sleep.
 - **Every sensor.** Per-core load and clocks, all 186 temperature sensors on an
   M1 Pro, fans, memory pressure, swap, network and disk.
+- **Ask your AI agent.** Claude Code, Codex and other agents can read the same
+  numbers over MCP: what is hogging the CPU, what that spike was, how hot it
+  got this afternoon. See [AI agents](#ai-agents-mcp).
 - **Nothing extra running.** No helper tool, no `sudo`, no network
   connections, no permission prompts, and about 1.4% of one core at the
   default settings.
@@ -88,6 +91,72 @@ yourself instead, see [Building](#building).
   covers less hardware breadth and goes deeper on attribution: per-app GPU and
   disk rankings, a history you can click into, and sleep assertions.
 - **iStat Menus** is the polished paid option. Rex Boing is free.
+
+## AI agents (MCP)
+
+Rex Boing is also an [MCP](https://modelcontextprotocol.io) server, so an AI
+agent on your Mac can answer questions from its readings: what is using the CPU
+right now, what caused the spike ten minutes ago, which app used the most
+energy this afternoon, how hot the Mac got, what is keeping it awake.
+
+The server is the app's own executable, run with `mcp`. Register it once with
+your agent; Settings › General › AI agents shows both commands with the path of
+the copy you are running, ready to copy:
+
+```bash
+claude mcp add --scope user rex-boing -- "/Applications/Rex Boing.app/Contents/MacOS/Rex Boing" mcp
+codex mcp add rex-boing -- "/Applications/Rex Boing.app/Contents/MacOS/Rex Boing" mcp
+```
+
+Any other MCP client takes the same command. From a shell, `mcp --help` prints
+these, `tools` lists the tools, and `call get_snapshot '{"sections":["cpu"]}'`
+calls one.
+
+| Tool | What it answers |
+| --- | --- |
+| `get_snapshot` | Every current reading, by section: CPU, GPU, memory, thermals, power, battery, network, disk, the Mac itself, and which processes are keeping it awake |
+| `get_processes` | The top processes right now by CPU, memory, GPU, energy or disk, with every measure side by side |
+| `get_history` | How the graph series moved over a window: per sample for the newest 600 samples (ten minutes at the default refresh) and per minute for a day, as a bounded number of points with min, mean and max |
+| `get_process_history` | The ranked process table at a past moment, or summarised over a span: what caused that spike |
+| `get_app_usage` | Which apps did the most work over the last minute to 24 hours, from the usage ledger |
+| `get_status` | Version, sampling interval, which data sources resolved, and how far back each history reaches |
+
+Every tool only reads. Answers are compact JSON whose keys carry their units
+(`cpuPercent`, `memoryBytes`, `gpuCelsius`), with times in ISO 8601 at the
+Mac's own UTC offset. A reading this Mac has no source for is left out rather
+than sent as zero, and every list is bounded and says when it was cut. The
+server speaks both the handshake revisions of the protocol (2024-11-05 to
+2025-11-25) and the per-request versions of 2026-07-28.
+
+None of it bends the promises above:
+
+- **No network, nothing on disk.** The agent talks to `Rex Boing mcp` over its
+  stdin and stdout, and that process asks the running app over a local Mach
+  message port, `com.rexyrex.Zoomies.mcp`. Like the stats broadcast's
+  distributed notifications, the port's name lives in the login session; nothing
+  listens on a socket, and the answers come from the same in-memory history the
+  graphs draw.
+- **Nothing running while nobody asks.** The port costs nothing between
+  messages. An agent's first call switches on the detailed sampling an open
+  dashboard gets (every sensor, sleep assertions, a process table every tick),
+  kept up even while the display sleeps, and it switches off twenty seconds
+  after the last call. The handshake and the
+  tool list are answered by the bridge itself, so an agent starting up never
+  wakes the app.
+- **Launched quietly.** If Rex Boing is not running, the first call opens it in
+  the background, in the menu bar only, with no window even when "Open when Rex
+  Boing starts" is on. Register it with `mcp --no-launch` to get a `not_running`
+  error instead.
+- **Survives restarts.** Quitting, updating or reinstalling the app costs an
+  agent at most the call in flight; the next call reconnects. `./build.sh
+  --install` quits only the app, never an agent's bridge.
+- **An off switch.** "Let AI agents read this Mac's readings" in Settings ›
+  General is on by default: registering the server with an agent is the opt-in,
+  and any process of yours can already read the same counters. Turned off, the
+  app does not create the port at all, and calls answer `disabled`.
+- **No more than the app shows.** Process rows carry names, pids, bundle
+  identifiers and executable paths, as the process card's tooltips do. There are
+  no command lines: the app never reads them for this Mac's processes.
 
 ## How it works
 
@@ -379,7 +448,10 @@ The union runs 32–36 rows, so the six hundred the ring holds — ten minutes o
 them while a dashboard is open, about an hour otherwise — cost about 2.2 MB of
 numbers, with name and path strings shared across samples rather than rebuilt
 per sample. The graph series beside them are fifteen rings of six hundred
-samples, 144 KB in all.
+samples, 144 KB in all, and the same fifteen series kept a minute at a time for
+a day, about 400 KB, so an agent can ask about this afternoon: a mean, a minimum
+and a maximum per minute, a few additions per sample, and a minute nothing was
+sampled in stays empty rather than becoming a zero.
 
 The dashboard figure is the outlier and is worth stating plainly: a panel with
 eight live cards, seven graphs, a per-core grid and a ranked process list costs
@@ -513,28 +585,30 @@ the latest request) with `com.rexyrex.Zoomies.stats`, whose
 temperatures, fan speed, power, network and disk throughput, and nothing about
 processes. Distributed notifications stay inside the login session, so this is
 neither network nor disk, and nothing is sent while nobody asks. Mac Studio
-Project Manager's Agent Deck uses it to put these on a Stream Deck.
+Project Manager's Agent Deck uses it to put these on a Stream Deck. AI agents
+get the same local-only treatment over MCP; see [AI agents](#ai-agents-mcp).
 
 ### Checks
 
-There is no test target; instead `Tools/` holds nine small programs that
+There is no test target; instead `Tools/` holds ten small programs that
 compile against the app's own source files and exercise them headlessly, and
 one script that runs them all:
 
 ```bash
 Tools/check.sh          # everything
 Tools/check.sh --pure   # only the checks that never read live hardware (what CI runs)
-Tools/check.sh visual   # one by name: visual ink readout clock power wire ledger metrics engine
+Tools/check.sh visual   # one by name: visual ink readout clock power wire mcp ledger metrics engine
 ```
 
-Six are deterministic — the drawing path, the colour ramp, the readout
-widths, the history buffers and ledger against a synthetic timeline, the
-energy meter against synthetic publication schedules, and the Rex Boing Remote
-wire format in both directions — and
-must pass everywhere. The other three sample the machine they run on, so their
-readings differ per Mac by design; what they assert is availability, finiteness,
-ranges and internally consistent counts. Run the whole set before opening a
-pull request.
+Seven are deterministic and must pass everywhere: the drawing path, the colour
+ramp, the readout widths, the history buffers (per sample and per minute) and
+ledger against a synthetic timeline, the energy meter against synthetic
+publication schedules, the Rex Boing Remote wire format in both directions, and
+the MCP server's protocol, tool schemas and payloads held to its conventions,
+with its relay driven over a real message port by many calls at once.
+The other three sample the machine they run on, so their readings differ per
+Mac by design; what they assert is availability, finiteness, ranges and
+internally consistent counts. Run the whole set before opening a pull request.
 
 ### Icon and README figures
 
@@ -639,8 +713,10 @@ here.
 
 ```
 RexBoing/
-  App/            entry point, preferences, login item, About panel
-  Metrics/        Snapshot model, history buffers, usage ledger, formatting
+  App/            entry point, preferences, login item, About panel, stats
+                  broadcast, and the MCP server with its stdio bridge
+  Metrics/        Snapshot model, history buffers (per sample and per
+                  minute), usage ledger, formatting
     Samplers/     one file per data source
   StatusBar/      visualisers, layer canvas, readout renderer, status item
   UI/             dashboard, Monitor window, cards, components, process
