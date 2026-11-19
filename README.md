@@ -57,8 +57,8 @@ Settings › General turns that off. It downloads and installs nothing itself
 <p align="center"><img src="docs/menubar.gif" width="504" alt="The menu bar item: the rex trots in green at 8% CPU, runs faster as load climbs, and turns orange and then red at 100%."></p>
 
 - **A pet that reads the room.** The rex's pace follows CPU load, it is green
-  while the Mac has room, turns orange past 70% and red at 100%, and there are
-  sixteen of it.
+  while the Mac has room (or white, if you prefer), turns orange past 70% and
+  red at 100%, and there are sixteen of it.
 - **Which app is using what.** Top processes by CPU, memory, GPU, energy or
   disk I/O, live or over the last 5 minutes to 24 hours, with helpers folded
   into their app.
@@ -244,8 +244,10 @@ The rex reads like a traffic light: up to seventy percent the field stays
 green and only its pace changes. Above that it fades into orange by eighty and
 deepens continuously to red at full load, rather than stepping the way the
 readouts' severity tints do. The green is darker on a light menu bar, so it
-reads on either. Monochrome mode opts out of colour and keeps the menu bar's
-label colour throughout.
+reads on either. Settings › Menu Bar › Character colour can start it in the
+menu bar's label colour instead (White → Red: white on a dark bar, black on a
+light one), as the rex was drawn before it turned green. Monochrome mode opts
+out of colour and keeps the label colour throughout.
 
 **Dashboard** (click the item)
 

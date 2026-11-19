@@ -200,6 +200,25 @@ enum MonitorSpan {
     }
 }
 
+/// The colour the menu bar character starts from, before load carries it to
+/// orange past 70% and red at 100%.
+enum RexColor: String, CaseIterable, Identifiable {
+    /// Green while the Mac has room: `LoadInk.rest`.
+    case green
+    /// The menu bar's own label colour, as the character was drawn before it
+    /// turned green: white on a dark bar, black on a light one.
+    case white
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .green: return "Green → Red"
+        case .white: return "White → Red"
+        }
+    }
+}
+
 /// User-facing settings, persisted in `UserDefaults` and observable from both
 /// SwiftUI and the AppKit status item.
 @MainActor
@@ -214,6 +233,7 @@ final class Preferences: ObservableObject {
         static let visualizer = "visualizer"
         static let readouts = "menuBarReadouts"
         static let monochrome = "monochromeMenuBar"
+        static let rexColor = "rexColor"
         static let animation = "animationQuality"
         static let showVisualizer = "showVisualizer"
         static let processRowCount = "processRowCount"
@@ -243,6 +263,11 @@ final class Preferences: ObservableObject {
 
     @Published var monochromeMenuBar: Bool {
         didSet { defaults.set(monochromeMenuBar, forKey: Key.monochrome) }
+    }
+
+    /// Where the character's colour ramp starts. Monochrome overrides it.
+    @Published var rexColor: RexColor {
+        didSet { defaults.set(rexColor.rawValue, forKey: Key.rexColor) }
     }
 
     @Published var animation: AnimationQuality {
@@ -354,6 +379,7 @@ final class Preferences: ObservableObject {
             Key.visualizer: Visualizer.rex.rawValue,
             Key.readouts: [String](),
             Key.monochrome: false,
+            Key.rexColor: RexColor.green.rawValue,
             // Smooth by default now that the frame cost is a rounding error.
             // The economical ceiling existed to protect battery life, and
             // measurement says it no longer buys anything worth the choppiness.
@@ -385,6 +411,7 @@ final class Preferences: ObservableObject {
             .compactMap(MenuBarReadout.init(rawValue:))
             .filter { seenReadouts.insert($0).inserted }
         monochromeMenuBar = defaults.bool(forKey: Key.monochrome)
+        rexColor = RexColor(rawValue: defaults.string(forKey: Key.rexColor) ?? "") ?? .green
         animation = AnimationQuality(
             rawValue: defaults.string(forKey: Key.animation) ?? "") ?? .smooth
         showVisualizer = defaults.bool(forKey: Key.showVisualizer)

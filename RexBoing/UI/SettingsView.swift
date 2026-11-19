@@ -162,6 +162,21 @@ struct SettingsView: View {
             }
 
             Section {
+                Picker("Character colour", selection: $preferences.rexColor) {
+                    ForEach(RexColor.allCases) { color in
+                        Text(color.label).tag(color)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .disabled(preferences.monochromeMenuBar)
+                Text(preferences.monochromeMenuBar
+                     ? "Monochrome keeps the character in the menu bar's own colour at every load."
+                     : "Where the character starts while the Mac has room. Either way it turns orange past 70% CPU and red at 100%. White follows the menu bar: black on a light one.")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+            }
+
+            Section {
                 Toggle("Monochrome", isOn: $preferences.monochromeMenuBar)
                 Text("Keeps the menu bar's own label colour throughout: no colour ramp on the character, no warning tints on hot or saturated readouts.")
                     .font(.system(size: 10))
@@ -183,10 +198,12 @@ struct SettingsView: View {
                             cg.translateBy(x: 0, y: size.height)
                             cg.scaleBy(x: 1, y: -1)
                             // In the menu bar's own colour for this load:
-                            // green at rest, the label colour in Monochrome.
+                            // green at rest, or the label colour for White →
+                            // Red and for Monochrome.
+                            let ink = preferences.monochromeMenuBar || preferences.rexColor == .white
+                                ? NSColor.labelColor : LoadInk.rest
                             preferences.visualizer.draw(in: cg, rect: CGRect(origin: .zero, size: size),
-                                                        time: time, load: 0.45,
-                                                        color: preferences.monochromeMenuBar ? .labelColor : LoadInk.rest)
+                                                        time: time, load: 0.45, color: ink)
                         }
                     }
                     .frame(width: 72, height: 44)

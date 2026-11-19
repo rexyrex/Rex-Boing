@@ -94,6 +94,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         var showVisualizer: Bool
         var visualizer: Visualizer
         var monochrome: Bool
+        var rexColor: RexColor
         var refreshInterval: TimeInterval
 
         @MainActor init(_ preferences: Preferences) {
@@ -101,6 +102,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             showVisualizer = preferences.showVisualizer
             visualizer = preferences.visualizer
             monochrome = preferences.monochromeMenuBar
+            rexColor = preferences.rexColor
             refreshInterval = preferences.refreshInterval
         }
     }
@@ -131,10 +133,12 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     private var neutralInk: NSColor = .labelColor
     private var inkAlpha: Float = 1
 
-    /// `LoadInk.rest`, the green, resolved opaque the same way and at the same
-    /// moment. This is where the visualiser's colour starts, not where it
-    /// ends: at rest the field is drawn in it, and `LoadInk` carries it up its
-    /// ramp to orange and red as the machine works.
+    /// Where the visualiser's colour starts, not where it ends: at rest the
+    /// field is drawn in it, and `LoadInk` carries it up its ramp to orange
+    /// and red as the machine works. `LoadInk.rest`, the green, resolved
+    /// opaque the same way and at the same moment as the label colour — or
+    /// the label colour itself when the White → Red setting asks for the
+    /// character as it was before it turned green.
     private var restInk: NSColor = LoadInk.rest
 
     /// Last ramped colour, with the load it was built for.
@@ -279,6 +283,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             preferences.$showVisualizer.map { _ in () }.eraseToAnyPublisher(),
             preferences.$visualizer.map { _ in () }.eraseToAnyPublisher(),
             preferences.$monochromeMenuBar.map { _ in () }.eraseToAnyPublisher(),
+            preferences.$rexColor.map { _ in () }.eraseToAnyPublisher(),
             preferences.$temperatureUnit.map { _ in () }.eraseToAnyPublisher(),
             preferences.$animation.map { _ in () }.eraseToAnyPublisher()
         )
@@ -590,9 +595,12 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             // — that is what the depth cues are made of — and translucent ink
             // would let every crossing brighten.
             let resolved = label.withAlphaComponent(1)
-            let rest = (LoadInk.rest.usingColorSpace(.deviceRGB) ?? resolved).withAlphaComponent(1)
-            // Switching between light and dark moves the foot of the ramp, so
-            // anything built on the old one is stale.
+            let rest = settings.rexColor == .white
+                ? resolved
+                : (LoadInk.rest.usingColorSpace(.deviceRGB) ?? resolved).withAlphaComponent(1)
+            // Switching between light and dark, or between green and white,
+            // moves the foot of the ramp, so anything built on the old one is
+            // stale.
             if rest != restInk { rampedInk = nil }
             neutralInk = resolved
             restInk = rest
