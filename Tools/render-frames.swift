@@ -68,7 +68,9 @@ enum RenderFrames {
         return last.1
     }
 
-    // LoadInk, reproduced: neutral below 0.70, orange by 0.80, red at 1.00.
+    // LoadInk, reproduced on a dark bar: green below 0.70, orange by 0.80,
+    // red at 1.00 (white throughout with --mono).
+    static let rest = (0.36, 0.78, 0.52)
     static let high = (0.98, 0.56, 0.24)
     static let critical = (0.96, 0.36, 0.36)
     static func ink(_ load: Double) -> NSColor {
@@ -81,8 +83,9 @@ enum RenderFrames {
             return NSColor(srgbRed: Double((v >> 16) & 255) / 255, green: Double((v >> 8) & 255) / 255,
                            blue: Double(v & 255) / 255, alpha: 1)
         }
-        if flags.contains("--mono") || l <= 0.70 { return NSColor(srgbRed: 1, green: 1, blue: 1, alpha: 1) }
-        if l <= 0.80 { return mix((1, 1, 1), high, (l - 0.70) / 0.10) }
+        if flags.contains("--mono") { return NSColor(srgbRed: 1, green: 1, blue: 1, alpha: 1) }
+        if l <= 0.70 { return NSColor(srgbRed: rest.0, green: rest.1, blue: rest.2, alpha: 1) }
+        if l <= 0.80 { return mix(rest, high, (l - 0.70) / 0.10) }
         return mix(high, critical, (l - 0.80) / 0.20)
     }
 

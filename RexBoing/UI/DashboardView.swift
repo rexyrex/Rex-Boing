@@ -110,8 +110,8 @@ struct DashboardView: View {
         HStack(alignment: .center, spacing: 10) {
             // The character on duty, at rest, drawn by the menu bar's own code
             // at the menu bar's own size. Tinted in the brand blue — the app
-            // icon's plate and the foot of the load ramp — so it reads as a
-            // mark beside the name rather than as a second status item.
+            // icon's plate — so it reads as a mark beside the name rather
+            // than as a second status item.
             Image(nsImage: VisualizerIcon.image(for: preferences.visualizer))
                 .renderingMode(.template)
                 .resizable()

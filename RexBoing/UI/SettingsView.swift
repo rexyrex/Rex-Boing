@@ -174,8 +174,11 @@ struct SettingsView: View {
                         context.withCGContext { cg in
                             cg.translateBy(x: 0, y: size.height)
                             cg.scaleBy(x: 1, y: -1)
+                            // In the menu bar's own colour for this load:
+                            // green at rest, the label colour in Monochrome.
                             preferences.visualizer.draw(in: cg, rect: CGRect(origin: .zero, size: size),
-                                                        time: time, load: 0.45, color: .labelColor)
+                                                        time: time, load: 0.45,
+                                                        color: preferences.monochromeMenuBar ? .labelColor : LoadInk.rest)
                         }
                     }
                     .frame(width: 72, height: 44)

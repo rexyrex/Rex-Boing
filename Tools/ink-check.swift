@@ -7,11 +7,13 @@ import AppKit
 //   /tmp/ink-check
 //
 // `LoadInk` promises two things the eye cannot easily confirm on a live menu
-// bar: that the field keeps the label colour, untouched, right up to the
-// threshold — so a busy-but-not-alarming machine looks exactly like an idle
-// one apart from its pace — and that above the threshold the colour moves
-// continuously from the neutral into orange and on to red, with no step at
-// the line and no dead grey on the way. This pins both down in components.
+// bar: that the field keeps its resting colour — the green, or the label
+// colour in Monochrome — untouched, right up to the threshold, so a
+// busy-but-not-alarming machine looks exactly like an idle one apart from its
+// pace; and that above the threshold the colour moves continuously from rest
+// into orange and on to red, with no step at the line and no dead grey on the
+// way. This pins both down in components, and holds the green itself to the
+// same contrast on either bar as the readouts' warning tints.
 @main
 enum InkCheck {
     static func main() {
@@ -21,11 +23,25 @@ enum InkCheck {
             print("FAIL: \(message)")
         }
 
-        // Both appearances' label colours, resolved the way the status item
-        // resolves them: into device RGB, then made opaque.
+        // The resting green under each appearance, resolved the way the
+        // status item resolves it: inside the appearance, into device RGB,
+        // then made opaque.
+        func rest(_ name: NSAppearance.Name) -> NSColor {
+            var color = LoadInk.rest
+            NSAppearance(named: name)!.performAsCurrentDrawingAppearance {
+                color = LoadInk.rest.usingColorSpace(.deviceRGB)!.withAlphaComponent(1)
+            }
+            return color
+        }
+        let restOnLight = rest(.aqua), restOnDark = rest(.darkAqua)
+
+        // Both appearances' label colours — Monochrome's rest — and both
+        // greens, each the foot of the same ramp.
         let neutrals: [(name: String, color: NSColor)] = [
             ("light", NSColor(deviceRed: 0, green: 0, blue: 0, alpha: 1)),
             ("dark", NSColor(deviceRed: 1, green: 1, blue: 1, alpha: 1)),
+            ("green on light", restOnLight),
+            ("green on dark", restOnDark),
         ]
 
         for neutral in neutrals {
@@ -119,6 +135,18 @@ enum InkCheck {
             print(String(format: "\(severity)  light %.1f:1  dark %.1f:1", onLight, onDark))
         }
 
+        // The rex spends most of its day in its resting green, so that has to
+        // read on either bar too — and actually be green: green the largest
+        // component, by a clear margin.
+        let restContrast = (light: contrast(restOnLight, white), dark: contrast(restOnDark, darkBar))
+        if restContrast.light < 3 { fail(String(format: "resting green on a light bar: %.2f:1", restContrast.light)) }
+        if restContrast.dark < 3 { fail(String(format: "resting green on a dark bar: %.2f:1", restContrast.dark)) }
+        for (name, green) in [("light", restOnLight), ("dark", restOnDark)] {
+            let c = components(green)
+            if c[1] < max(c[0], c[2]) + 0.2 { fail("resting green on a \(name) bar is not green: \(describe(green))") }
+        }
+        print(String(format: "rest  light %.1f:1  dark %.1f:1", restContrast.light, restContrast.dark))
+
         // The controller's memo compares quantised loads; the ramp must be
         // deterministic for that to be a cache and not a coin flip.
         let a = LoadInk.color(forLoad: 0.91, neutral: neutrals[1].color)
@@ -126,7 +154,7 @@ enum InkCheck {
         if a != b { fail("ramp is not deterministic") }
 
         for load in [0.0, 0.5, 0.69, 0.70, 0.72, 0.75, 0.80, 0.90, 1.0] {
-            print(String(format: "load %.2f  dark: %@", load, describe(LoadInk.color(forLoad: load, neutral: neutrals[1].color))))
+            print(String(format: "load %.2f  dark: %@", load, describe(LoadInk.color(forLoad: load, neutral: restOnDark))))
         }
 
         if failures == 0 {

@@ -140,26 +140,37 @@ extension ProcessMetric {
 
 /// The visualiser's colour, as a function of load.
 ///
-/// Below the warning threshold the field keeps the caller's neutral — the menu
-/// bar's own label colour — and says everything it has to say about the
-/// machine through pace alone. Colour is reserved for the top of the range: a
-/// character that is white all day and turns orange is a signal, one that
-/// wanders through blue and green on the way there is a mood ring.
+/// The rex reads like a traffic light: green while the Mac has room to spare,
+/// orange when it is working hard, red when it is flat out. Below the warning
+/// threshold the field keeps the caller's resting colour — `rest`, green, in
+/// the menu bar; the bar's own label colour when Monochrome asks for one — and
+/// says everything else about the machine through pace alone.
 ///
 /// Above the threshold the ramp is continuous rather than stepped, because the
-/// load under it glides between samples and a colour that popped from white to
+/// load under it glides between samples and a colour that popped from green to
 /// orange at exactly seventy percent would flicker across the line all
-/// afternoon. The neutral fades into orange over the first ten points, so the
-/// field is unmistakably orange by eighty, and the remaining twenty deepen it
-/// to red. Orange and red are near neighbours, so a straight component blend
-/// between them never passes through a dead grey.
+/// afternoon. The resting colour fades into orange over the first ten points,
+/// so the field is unmistakably orange by eighty, and the remaining twenty
+/// deepen it to red. Green, orange and red sit in a row around the hue wheel,
+/// so a straight component blend between them passes through olive and amber,
+/// never through a dead grey.
 ///
-/// Rest is the caller's neutral rather than a hue of its own, for the reason
-/// `Severity.color` returns nil for `.calm`: an idle menu bar should look like
-/// the rest of the menu bar.
+/// The ramp itself takes its foot from the caller rather than owning it, so
+/// the one function serves the green rex and the monochrome one alike.
 public enum LoadInk {
-    /// The load below which the field is drawn in the neutral, untouched.
+    /// The load below which the field is drawn in the resting colour, untouched.
     public static let threshold = 0.70
+
+    /// The rex at rest: green. Dynamic, like the readouts' warning tints,
+    /// because the palette's green is tuned for a dark bar and falls under 3:1
+    /// against a light one. The status item resolves it inside its button's
+    /// appearance and hands the result to `color(forLoad:neutral:)`.
+    public static let rest = NSColor(name: nil) { appearance in
+        appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? restOnDark : restOnLight
+    }
+
+    private static let restOnDark = NSColor(Palette.calm)
+    private static let restOnLight = NSColor(srgbRed: 0.11, green: 0.56, blue: 0.28, alpha: 1)
 
     /// Hue stops above the threshold, ascending. The threshold stop is the
     /// neutral passed in.
@@ -200,15 +211,16 @@ public enum LoadInk {
 
     /// - Parameters:
     ///   - load: 0...1, expected already smoothed.
-    ///   - neutral: the colour at rest and everywhere below `threshold`.
+    ///   - neutral: the colour at rest and everywhere below `threshold`:
+    ///     `rest` for the green rex, the label colour for a monochrome one.
     ///     Expected already resolved against the appearance it will be drawn
     ///     in — this does pure component maths and cannot resolve a dynamic
     ///     colour itself.
-    /// - Returns: an opaque colour. The caller applies the neutral's own
+    /// - Returns: an opaque colour. The caller applies the label colour's own
     ///   transparency to the layer instead, so overlapping strokes do not
     ///   compound at every crossing. Below the threshold this is the neutral
-    ///   object itself, not a copy through RGB space, so the field matches the
-    ///   readouts beside it to the bit.
+    ///   object itself, not a copy through RGB space, so a monochrome field
+    ///   matches the readouts beside it to the bit.
     public static func color(forLoad load: Double, neutral: NSColor) -> NSColor {
         let clamped = min(1, max(0, load))
         guard clamped > threshold else { return neutral }

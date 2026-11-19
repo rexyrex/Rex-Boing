@@ -9,8 +9,9 @@
 #
 #   visual   the CALayer drawing path draws every rex pixel-identically to a
 #            direct render, flipped and unflipped
-#   ink      the load colour ramp holds the label colour to the threshold and
-#            walks orange → red without a step or a grey
+#   ink      the load colour ramp holds its resting green (or Monochrome's
+#            label colour) to the threshold and walks orange → red without a
+#            step or a grey; the green reads on either menu bar
 #   readout  every menu bar caption fits the column it was measured for
 #   clock    history buffers, the per-minute tier, process history and the
 #            usage ledger against a synthetic timeline
@@ -41,7 +42,7 @@ if [ $# -eq 0 ]; then
 elif [ "$1" = "--pure" ]; then
     CHECKS=("${PURE[@]}")
 elif [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
-    sed -n '2,32p' "$0"
+    sed -n '2,33p' "$0"
     exit 0
 else
     CHECKS=("$@")

@@ -126,13 +126,16 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
 
     /// The label colour, resolved opaque, with its own alpha kept aside for the
     /// layer. Resolved once per sample under the button's appearance so the
-    /// per-frame drawing path never has to touch a dynamic colour.
-    ///
-    /// This is where the visualiser's colour starts, not where it ends: at rest
-    /// the field is drawn in it, and `LoadInk` carries it up its ramp as the
-    /// machine works.
+    /// per-frame drawing path never has to touch a dynamic colour. Monochrome
+    /// draws the field in it throughout.
     private var neutralInk: NSColor = .labelColor
     private var inkAlpha: Float = 1
+
+    /// `LoadInk.rest`, the green, resolved opaque the same way and at the same
+    /// moment. This is where the visualiser's colour starts, not where it
+    /// ends: at rest the field is drawn in it, and `LoadInk` carries it up its
+    /// ramp to orange and red as the machine works.
+    private var restInk: NSColor = LoadInk.rest
 
     /// Last ramped colour, with the load it was built for.
     ///
@@ -587,10 +590,12 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             // — that is what the depth cues are made of — and translucent ink
             // would let every crossing brighten.
             let resolved = label.withAlphaComponent(1)
+            let rest = (LoadInk.rest.usingColorSpace(.deviceRGB) ?? resolved).withAlphaComponent(1)
             // Switching between light and dark moves the foot of the ramp, so
             // anything built on the old one is stale.
-            if resolved != neutralInk { rampedInk = nil }
+            if rest != restInk { rampedInk = nil }
             neutralInk = resolved
+            restInk = rest
             inkAlpha = Float(label.alphaComponent)
             rebuildReadouts(snapshot, force: force)
             configureVisualLayer()
@@ -710,7 +715,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         let quantised = (smoothedLoad * 200).rounded() / 200
         if let cached = rampedInk, quantised == rampedInkLoad { return cached }
 
-        let color = LoadInk.color(forLoad: quantised, neutral: neutralInk)
+        let color = LoadInk.color(forLoad: quantised, neutral: restInk)
         rampedInk = color
         rampedInkLoad = quantised
         return color

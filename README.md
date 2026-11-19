@@ -50,8 +50,9 @@ yourself instead, see [Building](#building).
 
 <p align="center"><img src="docs/menubar.gif" width="504" alt="The menu bar item: the rex trots at 8% CPU, runs faster as load climbs, and turns orange and then red at 100%."></p>
 
-- **A pet that reads the room.** The rex's pace follows CPU load, it turns
-  orange past 70% and red at 100%, and there are sixteen of it.
+- **A pet that reads the room.** The rex's pace follows CPU load, it is green
+  while the Mac has room, turns orange past 70% and red at 100%, and there are
+  sixteen of it.
 - **Which app is using what.** Top processes by CPU, memory, GPU, energy or
   disk I/O, live or over the last 5 minutes to 24 hours, with helpers folded
   into their app.
@@ -232,11 +233,12 @@ and a live preview; all existing animation selections remain compatible.
 plus any combination of live readouts: CPU, GPU, memory, swap, CPU/GPU
 temperature, system power, network throughput, disk throughput, battery.
 
-Colour is held back for the top of the range: up to seventy percent the
-field stays in the menu bar's label colour and only its pace changes. Above
-that it fades into orange by eighty and deepens continuously to red at full
-load, rather than stepping the way the readouts' severity tints do. Monochrome
-mode opts out of it and keeps the label colour throughout.
+The rex reads like a traffic light: up to seventy percent the field stays
+green and only its pace changes. Above that it fades into orange by eighty and
+deepens continuously to red at full load, rather than stepping the way the
+readouts' severity tints do. The green is darker on a light menu bar, so it
+reads on either. Monochrome mode opts out of colour and keeps the menu bar's
+label colour throughout.
 
 **Dashboard** (click the item)
 
@@ -542,10 +544,11 @@ everything drew at half size in the corner of the frame, and a layer that was
 never marked dirty. Both are invisible to a compiler and obvious to this.
 
 The colour ramp has a check of its own, `Tools/ink-check.swift`, which pins
-down what the eye cannot confirm on a live menu bar: the label colour comes
-back untouched all the way to the seventy percent line, the fade into orange
-starts from the neutral rather than popping, and the walk from orange to red
-never reverses or greys out.
+down what the eye cannot confirm on a live menu bar: the resting colour (the
+green, or Monochrome's label colour) comes back untouched all the way to the
+seventy percent line, the fade into orange starts from it rather than popping,
+the walk from orange to red never reverses or greys out, and the green clears
+3:1 against both a light and a dark bar.
 
 ```bash
 swiftc -O -o /tmp/ink-check Tools/ink-check.swift \
