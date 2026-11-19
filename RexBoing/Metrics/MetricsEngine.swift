@@ -11,6 +11,10 @@ final class MetricsEngine: ObservableObject {
     /// publishing the snapshot after mutating this value gives views the same
     /// coherent state with one update pass.
     private(set) var history = MetricsHistory()
+    /// The same series one bucket a minute for a day, for agents asking
+    /// about this afternoon. Recorded beside `history`, from the same
+    /// samples, and read by nothing on screen.
+    private(set) var minuteHistory = MinuteHistory()
     @Published private(set) var hasReceivedFirstSample = false
 
     /// Ranked process tables kept over time, for the inspector.
@@ -272,7 +276,10 @@ final class MetricsEngine: ObservableObject {
         DispatchQueue.main.async { [weak self] in
             MainActor.assumeIsolated {
                 guard let self else { return }
-                if recordHistory { self.history.record(snapshot) }
+                if recordHistory {
+                    self.history.record(snapshot)
+                    self.minuteHistory.record(snapshot)
+                }
                 self.snapshot = snapshot
                 // Recorded unconditionally, unlike the graph series. Those are
                 // rates over the tick's window, which a resync invalidates; the

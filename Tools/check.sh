@@ -12,8 +12,8 @@
 #   ink      the load colour ramp holds the label colour to the threshold and
 #            walks orange → red without a step or a grey
 #   readout  every menu bar caption fits the column it was measured for
-#   clock    history buffers, process history and the usage ledger against a
-#            synthetic timeline
+#   clock    history buffers, the per-minute tier, process history and the
+#            usage ledger against a synthetic timeline
 #   power    the energy meter against synthetic publication timelines:
 #            every-read, batched, frozen, stale, reset and rebaselined counters
 #   ledger   the usage ledger's accounting, then one live pass through the
@@ -61,8 +61,8 @@ sources_for() {
                  RexBoing/Metrics/Format.swift ;;
         clock)
             echo RexBoing/Metrics/Snapshot.swift RexBoing/Metrics/Wire.swift RexBoing/Metrics/Format.swift \
-                 RexBoing/Metrics/History.swift RexBoing/Metrics/ProcessHistory.swift \
-                 RexBoing/Metrics/UsageLedger.swift ;;
+                 RexBoing/Metrics/History.swift RexBoing/Metrics/MinuteHistory.swift \
+                 RexBoing/Metrics/ProcessHistory.swift RexBoing/Metrics/UsageLedger.swift ;;
         power)
             echo RexBoing/Metrics/Snapshot.swift RexBoing/Metrics/Wire.swift RexBoing/Metrics/Format.swift \
                  RexBoing/Metrics/Samplers/IOReportSampler.swift ;;

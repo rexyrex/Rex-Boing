@@ -49,6 +49,11 @@ struct EngineCheck {
         timestamp = engine.snapshot.timestamp
         check(await waitForSample(after: timestamp), "normal sampling continues after resync")
         check(engine.history.cpu.count == count + 1, "valid post-resync history resumes")
+        let minuteSamples = engine.minuteHistory
+            .buckets(.cpu, from: Date(timeIntervalSince1970: 0), through: Date())
+            .reduce(0) { $0 + $1.count }
+        check(minuteSamples == engine.history.cpu.count,
+              "the minute tier records exactly the samples graph history does")
         engine.setSamplingPaused(true)
         engine.endLiveProcessSampling()
         exit(failures == 0 ? 0 : 1)
