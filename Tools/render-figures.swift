@@ -104,9 +104,11 @@ enum RenderFigures {
         cg.translateBy(x: inset, y: 0)
         cg.draw(readouts, in: CGRect(origin: .zero, size: layout.size))
         cg.translateBy(x: layout.visual.minX, y: layout.visual.minY)
+        // At 30% the rex rests in LoadInk.rest's dark-bar green, as it does
+        // in the menu bar.
         Visualizer.rex.draw(
             in: cg, rect: CGRect(origin: .zero, size: layout.visual.size),
-            time: 1.3, load: 0.3, color: .labelColor)
+            time: 1.3, load: 0.3, color: NSColor(srgbRed: 0.36, green: 0.78, blue: 0.52, alpha: 1))
         cg.restoreGState()
 
         write(rep, to: path)

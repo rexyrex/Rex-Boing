@@ -54,7 +54,7 @@ Settings › General turns that off. It downloads and installs nothing itself
 
 ## What you get
 
-<p align="center"><img src="docs/menubar.gif" width="504" alt="The menu bar item: the rex trots at 8% CPU, runs faster as load climbs, and turns orange and then red at 100%."></p>
+<p align="center"><img src="docs/menubar.gif" width="504" alt="The menu bar item: the rex trots in green at 8% CPU, runs faster as load climbs, and turns orange and then red at 100%."></p>
 
 - **A pet that reads the room.** The rex's pace follows CPU load, it is green
   while the Mac has room, turns orange past 70% and red at 100%, and there are
@@ -222,7 +222,7 @@ code that draws the menu bar, at the same proportions
 (`Tools/render-animations.sh` makes the animation, `Tools/render-figures.swift`
 the sheet):
 
-<p align="center"><img src="docs/rexes.gif" width="660" alt="All sixteen rexes animating at once, speeding up and turning red as load rises."></p>
+<p align="center"><img src="docs/rexes.gif" width="660" alt="All sixteen rexes animating at once in green, speeding up and turning orange and then red as load rises."></p>
 
 ![rexes](docs/rexes.png)
 

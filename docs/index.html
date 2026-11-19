@@ -198,7 +198,7 @@
   .loads button[aria-pressed="true"] { background: rgba(255, 255, 255, 0.24); }
   .loads .dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; flex: none; }
   .loads .pct { margin-left: auto; font-variant-numeric: tabular-nums; color: rgba(255, 255, 255, 0.74); }
-  .loads [data-load="idle"] .dot, .loads [data-load="working"] .dot { color: #fff; }
+  .loads [data-load="idle"] .dot, .loads [data-load="working"] .dot { color: #5CC785; }
   .loads [data-load="busy"] .dot { color: #FA8F3D; }
   .loads [data-load="flat"] .dot { color: #F55C5C; }
 
@@ -294,7 +294,7 @@
     .loads button:hover { background: var(--line); }
     .loads button[aria-pressed="true"] { background: var(--button); color: var(--button-fg); }
     .loads button[aria-pressed="true"] .pct { color: inherit; opacity: 0.75; }
-    .loads [data-load="idle"] .dot, .loads [data-load="working"] .dot { color: var(--fg-2); }
+    .loads [data-load="idle"] .dot, .loads [data-load="working"] .dot { color: #2FA463; }
   }
   @media (max-width: 560px) {
     .brew { width: 100%; height: auto; min-height: 52px; }
@@ -438,7 +438,7 @@
     <div class="wrap">
       <div class="head">
         <h2>Sixteen rexes to choose from</h2>
-        <p class="sub">Each one speeds up with load, turns orange past 70% and red at 100%, and does something bigger past two-thirds. All of them are drawn in code.</p>
+        <p class="sub">Each one speeds up with load, stays green while your Mac has room, turns orange past 70% and red at 100%, and does something bigger past two-thirds. All of them are drawn in code.</p>
       </div>
       <ul class="gallery" id="gallery"></ul>
     </div>
