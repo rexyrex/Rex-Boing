@@ -22,12 +22,18 @@
 #            ranges and related counts (readings differ per Mac by design)
 #   wire     snapshots survive the Rex Boing Remote wire format both ways,
 #            and a Linux agent's sample decodes into the cards' model
+#   mcp      the MCP server's protocol against scripted messages, every
+#            tool's schema and argument forms, payloads from synthetic
+#            snapshots held to the conventions (units, missing-not-zero,
+#            bounded sizes), and the bridge's relay over a real message port
+#            to a stand-in app, under many simultaneous calls and across the
+#            app quitting soon after the bridge started it
 #   engine   the full engine against live samplers, without a status item
 #            and without touching preferences
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-PURE=(visual ink readout clock power wire)
+PURE=(visual ink readout clock power wire mcp)
 LIVE=(ledger metrics engine)
 
 if [ $# -eq 0 ]; then
@@ -35,7 +41,7 @@ if [ $# -eq 0 ]; then
 elif [ "$1" = "--pure" ]; then
     CHECKS=("${PURE[@]}")
 elif [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
-    sed -n '2,26p' "$0"
+    sed -n '2,32p' "$0"
     exit 0
 else
     CHECKS=("$@")
@@ -76,6 +82,12 @@ sources_for() {
         wire)
             echo RexBoing/Metrics/Snapshot.swift RexBoing/Metrics/Wire.swift \
                  RexBoing/Metrics/Format.swift ;;
+        mcp)
+            echo RexBoing/App/MCPJSON.swift RexBoing/App/MCPProtocol.swift RexBoing/App/MCPTools.swift \
+                 RexBoing/App/MCPPayloads.swift RexBoing/App/MCPBridge.swift \
+                 RexBoing/Metrics/Snapshot.swift RexBoing/Metrics/Wire.swift RexBoing/Metrics/Format.swift \
+                 RexBoing/Metrics/History.swift RexBoing/Metrics/MinuteHistory.swift \
+                 RexBoing/Metrics/ProcessHistory.swift RexBoing/Metrics/UsageLedger.swift ;;
         engine)
             find RexBoing -name '*.swift' ! -name RexBoingApp.swift | sort | tr '\n' ' ' ;;
         *)

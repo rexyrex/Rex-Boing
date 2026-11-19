@@ -54,7 +54,27 @@ struct EngineCheck {
             .reduce(0) { $0 + $1.count }
         check(minuteSamples == engine.history.cpu.count,
               "the minute tier records exactly the samples graph history does")
+
+        // An agent's lease: detailed sampling that also outlasts display sleep.
         engine.setSamplingPaused(true)
+        try? await Task.sleep(for: .milliseconds(300))
+        timestamp = engine.snapshot.timestamp
+        try? await Task.sleep(for: .milliseconds(1500))
+        check(engine.snapshot.timestamp == timestamp && engine.isSamplingPaused,
+              "display sleep pauses sampling while no agent is asking")
+        engine.beginAgentSampling()
+        check(!engine.isSamplingPaused, "an agent's lease resumes sampling through display sleep")
+        var fresh = false
+        for _ in 0..<200 {
+            if let since = engine.detailedSamplingSince, engine.snapshot.timestamp >= since,
+               engine.latestTickHasRates { fresh = true; break }
+            try? await Task.sleep(for: .milliseconds(25))
+        }
+        check(fresh, "a lease yields a detailed sample with valid rates")
+        check(engine.snapshot.sleep.sampled, "a detailed sample carries the sleep assertions")
+        engine.endAgentSampling()
+        check(engine.isSamplingPaused && engine.detailedSamplingSince == nil,
+              "ending the lease hands back detailed sampling and the pause")
         engine.endLiveProcessSampling()
         exit(failures == 0 ? 0 : 1)
     }

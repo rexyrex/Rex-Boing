@@ -58,7 +58,19 @@ if [ "$INSTALL" -eq 1 ]; then
     # `open` on a path that is already running only re-activates the old
     # process, so a running copy has to be quit first or the new build never
     # starts. Quit exactly the pids running now, and wait for each to go.
+    #
+    # Only app instances. An AI agent's MCP bridge is the same executable run
+    # as `Rex Boing mcp` (or `tools`, `call`), so it has the same process
+    # name; quitting it would drop the agent's connection, and it needs no
+    # restart: it reconnects to the new build on its next call.
+    APP_PIDS=()
     for PID in $(pgrep -x "Rex Boing" || true); do
+        if ps -o args= -p "$PID" 2>/dev/null | grep -qE '(^|/)Rex Boing (mcp|tools|call)( |$)'; then
+            continue
+        fi
+        APP_PIDS+=("$PID")
+    done
+    for PID in ${APP_PIDS[@]+"${APP_PIDS[@]}"}; do
         echo "==> Quitting the running copy (pid $PID)"
         kill "$PID" 2>/dev/null || true
         for _ in $(seq 1 20); do kill -0 "$PID" 2>/dev/null || break; sleep 0.25; done

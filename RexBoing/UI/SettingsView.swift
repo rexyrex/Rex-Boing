@@ -68,6 +68,17 @@ struct SettingsView: View {
                 }
             }
 
+            Section("AI agents") {
+                Toggle("Let AI agents read this Mac's readings", isOn: $preferences.mcpEnabled)
+                Text("Agents such as Claude Code and Codex can ask Rex Boing over MCP for its readings, top processes and recent history: read-only, on this Mac, and nothing runs until an agent asks. Register it with the command for yours.")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+                if preferences.mcpEnabled {
+                    RegistrationCommand(agent: "Claude Code", command: MCPIdentity.claudeCodeCommand)
+                    RegistrationCommand(agent: "Codex", command: MCPIdentity.codexCommand)
+                }
+            }
+
             Section {
                 Toggle("Launch at login", isOn: $preferences.launchAtLogin)
                 if preferences.launchAtLoginRequiresApproval {
@@ -250,6 +261,39 @@ struct SettingsView: View {
         .accessibilityLabel("\(help): \(readout.label)")
     }
 
+}
+
+/// One agent's registration command, built from this copy's real executable
+/// path, so what is copied is exactly what that agent should run.
+private struct RegistrationCommand: View {
+    let agent: String
+    let command: String
+    @State private var copied = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(agent)
+                Spacer(minLength: 4)
+                Button(copied ? "Copied" : "Copy") {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(command, forType: .string)
+                    copied = true
+                }
+                .controlSize(.small)
+            }
+            Text(command)
+                .font(.system(size: 10, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .task(id: copied) {
+            guard copied else { return }
+            try? await Task.sleep(for: .seconds(1.5))
+            copied = false
+        }
+    }
 }
 
 // MARK: - About

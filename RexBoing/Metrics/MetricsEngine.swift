@@ -17,6 +17,17 @@ final class MetricsEngine: ObservableObject {
     private(set) var minuteHistory = MinuteHistory()
     @Published private(set) var hasReceivedFirstSample = false
 
+    /// False while the newest tick was a resync, whose rates are blanked.
+    /// What an agent asking for current readings waits out.
+    private(set) var latestTickHasRates = false
+
+    /// When detailed sampling last switched on, stamped on the sampler queue
+    /// after the flag landed there: any tick dated later was taken with the
+    /// full sensor pass, sleep assertions and a live process table. `nil`
+    /// while nothing detailed is watching.
+    private(set) var detailedSamplingSince: Date?
+    private var detailedGeneration = 0
+
     /// Ranked process tables kept over time, for the inspector.
     ///
     /// A `let` holding its own observable object rather than another
@@ -28,6 +39,11 @@ final class MetricsEngine: ObservableObject {
     private var liveProcessConsumers = 0
     /// How many actual dashboard surfaces need the detailed sampler pass.
     private var dashboardConsumers = 0
+    /// How many agents, over MCP, are holding readings fresh. They count as
+    /// a dashboard and, unlike one, keep sampling going while the display
+    /// sleeps: an agent can be asking from a session nobody is looking at.
+    private var agentConsumers = 0
+    private var displayAsleep = false
 
     private let queue = DispatchQueue(label: "com.rexyrex.Zoomies.sampler", qos: .utility)
     private let core = SnapshotSampler()
@@ -181,8 +197,48 @@ final class MetricsEngine: ObservableObject {
         }
     }
 
+    /// Detailed sampling for an agent's lease: everything the dashboard gets,
+    /// held through display sleep. Pair with `endAgentSampling`.
+    func beginAgentSampling() {
+        agentConsumers += 1
+        beginDashboardSampling()
+        if agentConsumers == 1 { applySamplingPause() }
+    }
+
+    func endAgentSampling() {
+        guard agentConsumers > 0 else { return }
+        agentConsumers -= 1
+        endDashboardSampling()
+        if agentConsumers == 0 { applySamplingPause() }
+    }
+
+    /// The cadence ticks are actually scheduled at.
+    var samplingInterval: TimeInterval { max(0.25, min(10, configuredInterval)) }
+
+    /// Whether the timer is stopped: the display is asleep and no agent is asking.
+    var isSamplingPaused: Bool { samplingPaused }
+
     private func setDetailedMetricsVisible(_ visible: Bool) {
-        queue.async { [core] in core.detailedMetricsVisible = visible }
+        detailedGeneration += 1
+        let generation = detailedGeneration
+        if !visible { detailedSamplingSince = nil }
+        queue.async { [core, weak self] in
+            core.detailedMetricsVisible = visible
+            guard visible else { return }
+            // Dated here, behind the flag on the same serial queue, so no
+            // tick that started before the flag counts as detailed.
+            self?.noteDetailedSampling(since: Date(), generation: generation)
+        }
+    }
+
+    /// Called from the sampler queue, in order with the ticks it publishes.
+    nonisolated private func noteDetailedSampling(since: Date, generation: Int) {
+        DispatchQueue.main.async { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self, self.detailedGeneration == generation else { return }
+                self.detailedSamplingSince = since
+            }
+        }
     }
 
     /// Forces the next tick to treat its window as broken and re-prime every
@@ -194,9 +250,16 @@ final class MetricsEngine: ObservableObject {
         queue.async { [core] in core.forceResync = true }
     }
 
-    /// Stops all telemetry wakeups while the display is asleep. Counter-based
-    /// samplers re-prime themselves on the resync tick after wake.
+    /// Stops all telemetry wakeups while the display is asleep, unless an
+    /// agent is holding readings fresh. Counter-based samplers re-prime
+    /// themselves on the resync tick after wake.
     func setSamplingPaused(_ paused: Bool) {
+        displayAsleep = paused
+        applySamplingPause()
+    }
+
+    private func applySamplingPause() {
+        let paused = displayAsleep && agentConsumers == 0
         guard samplingPaused != paused else { return }
         samplingPaused = paused
         if paused {
@@ -234,7 +297,7 @@ final class MetricsEngine: ObservableObject {
         queue.async { [core, weak self] in
             core.forceProcessSample = true
             guard let snapshot = core.refreshProcesses() else { return }
-            self?.publish(snapshot, recordHistory: false)
+            self?.publish(snapshot, recordHistory: false, fromTick: false)
         }
     }
 
@@ -259,7 +322,7 @@ final class MetricsEngine: ObservableObject {
             let (snapshot, isResync) = core.tick(refreshInterval: clamped)
             // A resync sample carries no usable rates; recording it would plant
             // a false zero in every throughput and power graph.
-            self?.publish(snapshot, recordHistory: !isResync)
+            self?.publish(snapshot, recordHistory: !isResync, fromTick: true)
         }
         timer.resume()
         self.timer = timer
@@ -272,7 +335,7 @@ final class MetricsEngine: ObservableObject {
     /// them: two samples enqueued a second apart could be applied in the wrong
     /// order, which puts a backwards step in every history buffer. A serial
     /// queue delivers in the order it was handed the work.
-    nonisolated private func publish(_ snapshot: Snapshot, recordHistory: Bool) {
+    nonisolated private func publish(_ snapshot: Snapshot, recordHistory: Bool, fromTick: Bool) {
         DispatchQueue.main.async { [weak self] in
             MainActor.assumeIsolated {
                 guard let self else { return }
@@ -280,6 +343,9 @@ final class MetricsEngine: ObservableObject {
                     self.history.record(snapshot)
                     self.minuteHistory.record(snapshot)
                 }
+                // A process-only refresh re-publishes the last tick's rates,
+                // so only a tick says whether they are usable.
+                if fromTick { self.latestTickHasRates = recordHistory }
                 self.snapshot = snapshot
                 // Recorded unconditionally, unlike the graph series. Those are
                 // rates over the tick's window, which a resync invalidates; the

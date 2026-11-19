@@ -221,6 +221,7 @@ final class Preferences: ObservableObject {
         static let monitorSpan = "monitorSpan"
         static let monitorFloats = "monitorFloats"
         static let openMonitorAtLaunch = "openMonitorAtLaunch"
+        static let mcpEnabled = "mcpEnabled"
     }
 
     @Published var refreshInterval: Double {
@@ -284,6 +285,24 @@ final class Preferences: ObservableObject {
         didSet { defaults.set(openMonitorAtLaunch, forKey: Key.openMonitorAtLaunch) }
     }
 
+    /// Whether AI agents may read this Mac's readings over MCP. On by default:
+    /// registering the server with an agent is the opt-in, and any process of
+    /// this user can already read the same counters for itself.
+    ///
+    /// The one setting watched for changes made outside the app. The bridge
+    /// an agent runs reads this key straight from the preferences domain to
+    /// answer `disabled`, so the app has to agree with whatever is stored
+    /// there, including a `defaults write` made while it runs.
+    @Published var mcpEnabled: Bool {
+        didSet {
+            if defaults.object(forKey: Key.mcpEnabled) as? Bool != mcpEnabled {
+                defaults.set(mcpEnabled, forKey: Key.mcpEnabled)
+            }
+        }
+    }
+
+    private var mcpEnabledObservation: NSKeyValueObservation?
+
     /// Guards `launchAtLogin`'s revert against its own observer. Assigning a
     /// wrapped property inside `didSet` runs `didSet` again, and that second
     /// pass must not touch ServiceManagement: `setEnabled(false)` unregisters a
@@ -338,6 +357,7 @@ final class Preferences: ObservableObject {
             Key.monitorSpan: 300,
             Key.monitorFloats: false,
             Key.openMonitorAtLaunch: false,
+            Key.mcpEnabled: true,
         ])
 
         // Snapped to a real case: a stray stored value (hand-edited defaults,
@@ -367,8 +387,22 @@ final class Preferences: ObservableObject {
         } ?? 300
         monitorFloats = defaults.bool(forKey: Key.monitorFloats)
         openMonitorAtLaunch = defaults.bool(forKey: Key.openMonitorAtLaunch)
+        mcpEnabled = defaults.bool(forKey: Key.mcpEnabled)
         launchAtLogin = LoginItem.isEnabled
         launchAtLoginRequiresApproval = LoginItem.requiresApproval
+
+        // Key-value observation of `UserDefaults` hears other processes'
+        // writes to this domain too (checked on macOS 27), on whatever thread
+        // cfprefsd's notice arrives.
+        mcpEnabledObservation = defaults.observe(\.mcpEnabled, options: [.new]) { _, _ in
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    let preferences = Preferences.shared
+                    let stored = preferences.defaults.bool(forKey: Key.mcpEnabled)
+                    if stored != preferences.mcpEnabled { preferences.mcpEnabled = stored }
+                }
+            }
+        }
     }
 
     func toggle(_ readout: MenuBarReadout) {
@@ -407,6 +441,12 @@ final class Preferences: ObservableObject {
         isSyncingLoginItem = false
         defaults.set(effective, forKey: Key.launchAtLogin)
     }
+}
+
+extension UserDefaults {
+    /// Named for its key, so key-value observation of the property is
+    /// observation of the stored preference.
+    @objc dynamic fileprivate var mcpEnabled: Bool { bool(forKey: "mcpEnabled") }
 }
 
 extension StatusBarRenderer {

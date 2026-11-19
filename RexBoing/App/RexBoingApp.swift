@@ -1,7 +1,26 @@
 import SwiftUI
 import AppKit
 
+/// Decides what this process is before AppKit starts. Run with `mcp` (or
+/// `tools`, `call`) it is the stdio MCP bridge an AI agent launched, and must
+/// never become an app: no `NSApplication`, no status item, no windows, and
+/// no check-in with LaunchServices, so the app's own single-instance check
+/// and `build.sh --install` leave it running. Anything else is the app.
+///
+/// Only an exact first argument counts. LaunchServices and Xcode pass flags
+/// of their own (`-NSDocumentRevisionsDebugMode YES`), and none of them is a
+/// bare word.
 @main
+enum RexBoingMain {
+    @MainActor static func main() {
+        let arguments = Array(CommandLine.arguments.dropFirst())
+        if let first = arguments.first, MCPBridge.commands.contains(first) {
+            exit(MCPBridge.run(arguments))
+        }
+        RexBoingApp.main()
+    }
+}
+
 struct RexBoingApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
 
@@ -41,6 +60,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var engine: MetricsEngine?
     private var statusItem: StatusItemController?
     private var statsBroadcaster: StatsBroadcaster?
+    private var mcpServer: MCPServer?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Launch Services only dedupes launches of the same bundle *path*, and
@@ -54,6 +74,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Only copies that started *before* this one are quit. Two copies
         // launched together (a login item and a manual open) would otherwise
         // each see the other and quit it, leaving nothing in the menu bar.
+        //
+        // MCP bridges (`Rex Boing mcp`) share the bundle identifier and the
+        // executable, but never start NSApplication or check in with
+        // LaunchServices, so they are not in this list and stay connected.
         let current = NSRunningApplication.current
         if let identifier = Bundle.main.bundleIdentifier {
             for incumbent in NSRunningApplication.runningApplications(
@@ -72,8 +96,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.engine = engine
         self.statusItem = StatusItemController(engine: engine)
         self.statsBroadcaster = StatsBroadcaster(engine: engine)
+        self.mcpServer = MCPServer(engine: engine)
 
-        if Preferences.shared.openMonitorAtLaunch {
+        // An agent's bridge opened the app to answer a call: it starts as
+        // quietly as a login launch, whatever the Monitor preference says.
+        let launchedForAgent = CommandLine.arguments.dropFirst().contains(MCPIdentity.launchArgument)
+        if Preferences.shared.openMonitorAtLaunch, !launchedForAgent {
             MonitorWindowController.shared.show(engine: engine)
         }
     }
