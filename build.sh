@@ -74,7 +74,17 @@ if [ "$INSTALL" -eq 1 ]; then
     # nothing of the user's is lost here.
     rm -rf "$TARGET"
     mv "$TARGET.new" "$TARGET"
-    open "$TARGET"
+    # LaunchServices can refuse a launch for a moment after the copy it
+    # replaces has exited (`open` fails with -600, seen on macOS 27). Try
+    # again rather than leave the Mac without the app.
+    for ATTEMPT in 1 2 3 4 5; do
+        if open "$TARGET"; then break; fi
+        if [ "$ATTEMPT" -eq 5 ]; then
+            echo "Could not open $TARGET; it is installed, open it by hand." >&2
+            exit 1
+        fi
+        sleep 1
+    done
     echo
     echo "Done. Rex Boing is running from $TARGET."
 else
