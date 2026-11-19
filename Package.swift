@@ -7,8 +7,9 @@
 // Rex Boing itself does not build through this manifest: its Xcode project
 // (generated from project.yml) compiles the same files directly into the app.
 // The manifest exists so other projects can depend on this repository with
-// Swift Package Manager. It deliberately contains no networking code; neither
-// does anything else in this repository.
+// Swift Package Manager. It deliberately contains no networking code. The
+// app's one network request, the daily look for a new release
+// (App/UpdateCheck.swift, shown by UI/UpdateNotice.swift), stays out of it.
 import PackageDescription
 
 let package = Package(
@@ -32,6 +33,7 @@ let package = Package(
                 "UI/MonitorWindow.swift",
                 "UI/ProcessInspector.swift",
                 "UI/SettingsView.swift",
+                "UI/UpdateNotice.swift",
             ],
             swiftSettings: [
                 .swiftLanguageMode(.v5),

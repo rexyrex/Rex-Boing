@@ -29,12 +29,14 @@
 #            bounded sizes), and the bridge's relay over a real message port
 #            to a stand-in app, under many simultaneous calls and across the
 #            app quitting soon after the bridge started it
+#   update   the update check's version comparison and its reading of
+#            GitHub's release JSON, without asking GitHub anything
 #   engine   the full engine against live samplers, without a status item
 #            and without touching preferences
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-PURE=(visual ink readout clock power wire mcp)
+PURE=(visual ink readout clock power wire mcp update)
 LIVE=(ledger metrics engine)
 
 if [ $# -eq 0 ]; then
@@ -42,7 +44,7 @@ if [ $# -eq 0 ]; then
 elif [ "$1" = "--pure" ]; then
     CHECKS=("${PURE[@]}")
 elif [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
-    sed -n '2,33p' "$0"
+    sed -n '2,35p' "$0"
     exit 0
 else
     CHECKS=("$@")
@@ -89,6 +91,8 @@ sources_for() {
                  RexBoing/Metrics/Snapshot.swift RexBoing/Metrics/Wire.swift RexBoing/Metrics/Format.swift \
                  RexBoing/Metrics/History.swift RexBoing/Metrics/MinuteHistory.swift \
                  RexBoing/Metrics/ProcessHistory.swift RexBoing/Metrics/UsageLedger.swift ;;
+        update)
+            echo RexBoing/App/UpdateCheck.swift ;;
         engine)
             find RexBoing -name '*.swift' ! -name RexBoingApp.swift | sort | tr '\n' ' ' ;;
         *)

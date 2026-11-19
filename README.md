@@ -46,6 +46,12 @@ rex gallery and settings, and turn on **Launch at login** in Settings to keep
 it. To build it
 yourself instead, see [Building](#building).
 
+When a new version is out, the dashboard, the Monitor window, the rex's
+right-click menu and Settings say so, with a link to the release. The app asks
+GitHub for its latest release once a day; **Check for new versions** in
+Settings › General turns that off. It downloads and installs nothing itself
+(`brew upgrade --cask rex-boing` if you installed with Homebrew).
+
 ## What you get
 
 <p align="center"><img src="docs/menubar.gif" width="504" alt="The menu bar item: the rex trots at 8% CPU, runs faster as load climbs, and turns orange and then red at 100%."></p>
@@ -68,8 +74,9 @@ yourself instead, see [Building](#building).
 - **Ask your AI agent.** Claude Code, Codex and other agents can read the same
   numbers over MCP: what is hogging the CPU, what that spike was, how hot it
   got this afternoon. See [AI agents](#ai-agents-mcp).
-- **Nothing extra running.** No helper tool, no `sudo`, no network
-  connections, no permission prompts, and about 1.4% of one core at the
+- **Nothing extra running.** No helper tool, no `sudo`, no permission prompts,
+  one network request a day (the update check, which carries nothing about
+  your Mac and can be switched off), and about 1.4% of one core at the
   default settings.
 
 <table>
@@ -577,7 +584,8 @@ xcodegen generate && open RexBoing.xcodeproj
 
 The app is ad-hoc signed and **not sandboxed** — the sandbox blocks the Mach
 host ports, whole-system `libproc` access and IORegistry reads the whole app is
-built on. It makes no network connections and writes nothing outside its own
+built on. Its one network request is the daily update check (switch it off in
+Settings › General and it makes none), and it writes nothing outside its own
 preferences domain.
 
 Another app on the same Mac can ask for the headline readings: while it keeps
@@ -593,22 +601,23 @@ get the same local-only treatment over MCP; see [AI agents](#ai-agents-mcp).
 
 ### Checks
 
-There is no test target; instead `Tools/` holds ten small programs that
+There is no test target; instead `Tools/` holds eleven small programs that
 compile against the app's own source files and exercise them headlessly, and
 one script that runs them all:
 
 ```bash
 Tools/check.sh          # everything
 Tools/check.sh --pure   # only the checks that never read live hardware (what CI runs)
-Tools/check.sh visual   # one by name: visual ink readout clock power wire mcp ledger metrics engine
+Tools/check.sh visual   # one by name: visual ink readout clock power wire mcp update ledger metrics engine
 ```
 
-Seven are deterministic and must pass everywhere: the drawing path, the colour
+Eight are deterministic and must pass everywhere: the drawing path, the colour
 ramp, the readout widths, the history buffers (per sample and per minute) and
 ledger against a synthetic timeline, the energy meter against synthetic
-publication schedules, the Rex Boing Remote wire format in both directions, and
+publication schedules, the Rex Boing Remote wire format in both directions,
 the MCP server's protocol, tool schemas and payloads held to its conventions,
-with its relay driven over a real message port by many calls at once.
+with its relay driven over a real message port by many calls at once, and the
+update check's version comparison and reading of GitHub's release JSON.
 The other three sample the machine they run on, so their readings differ per
 Mac by design; what they assert is availability, finiteness, ranges and
 internally consistent counts. Run the whole set before opening a pull request.
@@ -684,9 +693,9 @@ cp notarize.env.example notarize.env   # then fill in your Key ID, Issuer ID and
 
 [Rex Boing Remote](https://github.com/rexyrex/Rex-Boing-Remote) is a separate
 app that puts your Linux, macOS and Windows servers in the menu bar the same
-way, over SSH. It is separate on purpose: Rex Boing makes no network
-connections, and keeping the SSH code out of this app and this repository is
-what keeps that easy to check.
+way, over SSH. It is separate on purpose: Rex Boing connects to nothing but
+GitHub, once a day, to see whether a newer release is out, and keeping the SSH
+code out of this app and this repository is what keeps that easy to check.
 
 ## Notes
 
@@ -709,8 +718,8 @@ headline tiles and the menu bar characters are also a Swift package,
 build through it — the Xcode project compiles the same files straight into the
 app — but [Rex Boing Remote](https://github.com/rexyrex/Rex-Boing-Remote)
 depends on it by release tag, so the remote dashboards are drawn by this code
-too. The package contains no networking code, and neither does anything else
-here.
+too. The package contains no networking code; the app's one request, the
+update check in `RexBoing/App/UpdateCheck.swift`, is outside it.
 
 ## Layout
 

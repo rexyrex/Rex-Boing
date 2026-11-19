@@ -222,6 +222,7 @@ final class Preferences: ObservableObject {
         static let monitorFloats = "monitorFloats"
         static let openMonitorAtLaunch = "openMonitorAtLaunch"
         static let mcpEnabled = "mcpEnabled"
+        static let checkForUpdates = "checkForUpdates"
     }
 
     @Published var refreshInterval: Double {
@@ -283,6 +284,13 @@ final class Preferences: ObservableObject {
     /// the rex in the menu bar.
     @Published var openMonitorAtLaunch: Bool {
         didSet { defaults.set(openMonitorAtLaunch, forKey: Key.openMonitorAtLaunch) }
+    }
+
+    /// Whether the app asks GitHub, once a day, if a newer release is out —
+    /// its only network request (see `UpdateCheck`). On by default, so a new
+    /// version is announced; off, the app makes no network requests at all.
+    @Published var checkForUpdates: Bool {
+        didSet { defaults.set(checkForUpdates, forKey: Key.checkForUpdates) }
     }
 
     /// Whether AI agents may read this Mac's readings over MCP. On by default:
@@ -358,6 +366,7 @@ final class Preferences: ObservableObject {
             Key.monitorFloats: false,
             Key.openMonitorAtLaunch: false,
             Key.mcpEnabled: true,
+            Key.checkForUpdates: true,
         ])
 
         // Snapped to a real case: a stray stored value (hand-edited defaults,
@@ -388,6 +397,7 @@ final class Preferences: ObservableObject {
         monitorFloats = defaults.bool(forKey: Key.monitorFloats)
         openMonitorAtLaunch = defaults.bool(forKey: Key.openMonitorAtLaunch)
         mcpEnabled = defaults.bool(forKey: Key.mcpEnabled)
+        checkForUpdates = defaults.bool(forKey: Key.checkForUpdates)
         launchAtLogin = LoginItem.isEnabled
         launchAtLoginRequiresApproval = LoginItem.requiresApproval
 

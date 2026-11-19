@@ -915,6 +915,20 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     private func showContextMenu() {
         let menu = NSMenu()
 
+        // A newer release goes first, where it is seen; there is no item at
+        // all while this copy is the newest.
+        if let release = UpdateCheck.shared.available {
+            let update = NSMenuItem(
+                title: "Rex Boing \(release.version) Is Available…", action: #selector(openUpdate),
+                keyEquivalent: "")
+            update.target = self
+            update.image = NSImage(
+                systemSymbolName: "arrow.down.circle", accessibilityDescription: nil)
+            update.toolTip = "You have \(UpdateCheck.shared.currentVersion). Opens the release page on GitHub."
+            menu.addItem(update)
+            menu.addItem(.separator())
+        }
+
         let dashboard = NSMenuItem(
             title: "Open Dashboard", action: #selector(openDashboard), keyEquivalent: "")
         dashboard.target = self
@@ -1010,6 +1024,10 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
 
     @objc private func openAbout() {
         AboutPanel.show()
+    }
+
+    @objc private func openUpdate() {
+        UpdateCheck.shared.openReleasePage()
     }
 
     @objc private func quit() { NSApp.terminate(nil) }

@@ -19,6 +19,9 @@ struct DashboardView: View {
 
             Divider().opacity(0.5)
 
+            // A newer release, when there is one; otherwise nothing.
+            UpdateNotice()
+
             if engine.hasReceivedFirstSample {
                 content
             } else {

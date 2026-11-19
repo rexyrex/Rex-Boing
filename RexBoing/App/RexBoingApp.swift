@@ -97,6 +97,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.statusItem = StatusItemController(engine: engine)
         self.statsBroadcaster = StatsBroadcaster(engine: engine)
         self.mcpServer = MCPServer(engine: engine)
+        UpdateCheck.shared.start(enabled: Preferences.shared.$checkForUpdates)
 
         // An agent's bridge opened the app to answer a call: it starts as
         // quietly as a login launch, whatever the Monitor preference says.

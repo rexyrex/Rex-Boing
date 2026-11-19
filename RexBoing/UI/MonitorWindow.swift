@@ -79,6 +79,9 @@ struct MonitorView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            // A newer release, when there is one; otherwise nothing.
+            UpdateNotice()
+
             if feed.isReady {
                 board
                 Divider().opacity(0.5)

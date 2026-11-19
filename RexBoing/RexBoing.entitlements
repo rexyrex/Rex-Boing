@@ -10,8 +10,9 @@
 	    * libproc listing + rusage for every process on the system
 	    * the IORegistry (GPU utilisation, per-process GPU time, SMC, HID sensors)
 
-	  The app makes no network connections and writes nothing outside its own
-	  preferences domain.
+	  Its one network request is the daily look for a new release on GitHub
+	  (App/UpdateCheck.swift; Settings › General turns it off), and it writes
+	  nothing outside its own preferences domain.
 	-->
 	<key>com.apple.security.app-sandbox</key>
 	<false/>

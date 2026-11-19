@@ -79,6 +79,14 @@ struct SettingsView: View {
                 }
             }
 
+            Section("Updates") {
+                Toggle("Check for new versions", isOn: $preferences.checkForUpdates)
+                UpdateStatusRow(enabled: preferences.checkForUpdates)
+                Text("Once a day Rex Boing asks GitHub for its latest release — the app's only network request, which carries nothing about this Mac — and says so here, in the dashboard and in the rex's right-click menu when a newer one is out.")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+            }
+
             Section {
                 Toggle("Launch at login", isOn: $preferences.launchAtLogin)
                 if preferences.launchAtLoginRequiresApproval {
@@ -300,6 +308,49 @@ private struct RegistrationCommand: View {
 }
 
 // MARK: - About
+
+/// Where the update check stands, with the one button that fits it: download
+/// a newer release, or ask again now. Observes the check alone, so the forms
+/// around it are not re-evaluated when it answers.
+private struct UpdateStatusRow: View {
+    let enabled: Bool
+    @ObservedObject private var check = UpdateCheck.shared
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Text(message)
+                .font(.system(size: 10))
+                .foregroundStyle(check.available != nil && enabled ? .primary : .secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 4)
+            if enabled, check.available != nil {
+                Button("Download…") { check.openReleasePage() }
+                    .controlSize(.small)
+            } else {
+                Button("Check Now") { check.checkNow() }
+                    .controlSize(.small)
+                    .disabled(!enabled || check.status == .checking)
+            }
+        }
+    }
+
+    private var message: String {
+        guard enabled else { return "Off: Rex Boing makes no network requests at all." }
+        let current = check.currentVersion
+        if let release = check.available {
+            return "Rex Boing \(release.version) is available. You have \(current)."
+        }
+        switch check.status {
+        case .off, .idle: return "Not checked yet."
+        case .checking: return "Checking…"
+        case .failed(let reason): return "Couldn't check: \(reason). It tries again within the hour."
+        case .checked:
+            guard let date = check.lastChecked else { return "\(current) is the newest version." }
+            let when = RelativeDateTimeFormatter().localizedString(for: date, relativeTo: Date())
+            return "\(current) is the newest version. Checked \(when)."
+        }
+    }
+}
 
 /// The one tab that reads the engine, and the only view in the window that
 /// observes it. Held by the whole `SettingsView`, that observation re-evaluated
